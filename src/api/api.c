@@ -7,8 +7,32 @@
 #include "../convert/convert.h"
 #include "../vendor/cjson/cJSON.h"
 
+#include <errno.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+
+/* Create the parent directory chain for a file path (like `mkdir -p $(dirname path)`), so
+ * exports to a not-yet-existing folder succeed (DuckDB won't create directories itself). */
+static db_err ensure_parent_dir(const char *file_path) {
+  char buf[2048];
+  if (snprintf(buf, sizeof buf, "%s", file_path) >= (int)sizeof buf)
+    return DB_FAIL(DB_ERR_INVALID_ARG, "path too long");
+  char *slash = strrchr(buf, '/');
+  if (!slash || slash == buf) return DB_OK;  /* no parent dir component */
+  *slash = '\0';
+  for (char *p = buf + 1; *p; p++) {
+    if (*p != '/') continue;
+    *p = '\0';
+    if (mkdir(buf, 0755) != 0 && errno != EEXIST)
+      return DB_FAIL(DB_ERR_IO, "mkdir %s: %s", buf, strerror(errno));
+    *p = '/';
+  }
+  if (mkdir(buf, 0755) != 0 && errno != EEXIST)
+    return DB_FAIL(DB_ERR_IO, "mkdir %s: %s", buf, strerror(errno));
+  return DB_OK;
+}
 
 /* ---- small JSON helpers ---- */
 static char *json_take(cJSON *o) {
@@ -100,12 +124,16 @@ db_err db_api_dispatch(db_conn *c, const char *method, const char *args_json,
     /* convert.* build (don't run) DuckDB SQL the UI shows in the editor for review + run. */
     char *sql = NULL;
     const char *m = method + 8;
+    const char *xpath = sget(args, "path");
     if (!strcmp(m, "import_csv"))
-      e = db_sql_import_csv(sget(args, "table"), sget(args, "path"), &sql);
-    else if (!strcmp(m, "export_parquet"))
-      e = db_sql_export_parquet(sget(args, "table"), sget(args, "path"), &sql);
-    else if (!strcmp(m, "export_csv"))
-      e = db_sql_export_csv(sget(args, "table"), sget(args, "path"), &sql);
+      e = db_sql_import_csv(sget(args, "table"), xpath, &sql);
+    else if (!strcmp(m, "export_parquet")) {
+      e = (xpath && xpath[0]) ? ensure_parent_dir(xpath) : DB_OK;   /* create dest folder */
+      if (e == DB_OK) e = db_sql_export_parquet(sget(args, "table"), xpath, &sql);
+    } else if (!strcmp(m, "export_csv")) {
+      e = (xpath && xpath[0]) ? ensure_parent_dir(xpath) : DB_OK;
+      if (e == DB_OK) e = db_sql_export_csv(sget(args, "table"), xpath, &sql);
+    }
     else if (!strcmp(m, "attach_sqlite"))
       e = db_sql_attach_sqlite(sget(args, "path"), sget(args, "alias"), &sql);
     else if (!strcmp(m, "copy_table"))
@@ -137,6 +165,7 @@ db_err db_api_dispatch(db_conn *c, const char *method, const char *args_json,
  * ------------------------------------------------------------------------- */
 #ifdef DB_TEST
 #include "../support/db_test.h"
+#include <unistd.h>
 
 /* helper: dispatch and parse the result JSON; caller cJSON_Delete()s. */
 static cJSON *dispatch_json(db_conn *c, const char *m, const char *args, db_err *e) {
@@ -211,6 +240,30 @@ TEST(api, convert_returns_sql) {
   ASSERT_ERR_EQ(e, DB_ERR_INVALID_ARG);
   ASSERT(cJSON_GetObjectItem(j, "error") != NULL);
   cJSON_Delete(j);
+  db_close(c);
+}
+
+TEST(api, export_creates_parent_dir) {
+  db_conn *c = NULL;
+  ASSERT_OK(db_open_duckdb_memory(&c));
+
+  char dir[256], file[320];
+  snprintf(dir, sizeof dir, "%s/dbview_mkdir_%d/nested",
+           getenv("TMPDIR") ? getenv("TMPDIR") : "/tmp", (int)getpid());
+  snprintf(file, sizeof file, "%s/out.parquet", dir);
+  /* ensure it does not exist yet */
+  ASSERT(access(dir, F_OK) != 0);
+
+  char args[512];
+  snprintf(args, sizeof args, "{\"table\":\"t\",\"path\":\"%s\"}", file);
+  db_err e;
+  cJSON *j = dispatch_json(c, "convert.export_parquet", args, &e);
+  ASSERT_ERR_EQ(e, DB_OK);
+  ASSERT(cJSON_GetObjectItem(j, "sql") != NULL);
+  ASSERT(access(dir, F_OK) == 0);   /* parent directory was created */
+  cJSON_Delete(j);
+
+  rmdir(dir);
   db_close(c);
 }
 
