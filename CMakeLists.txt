@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(dbview C)
+project(dbview C CXX)   # CXX is needed only for the vendored webview (the app target)
 
 # ---- standard: C23 ----
 set(CMAKE_C_STANDARD 23)
@@ -30,13 +30,19 @@ set(DBVIEW_SAN_FLAGS
 # ---- dependencies ----
 find_package(SQLite3 REQUIRED)
 
-# ---- engine sources: all of src/, minus the test runner and (future) app entry ----
+# ---- engine sources: all of src/, minus the test runner, app entry, and vendor ----
 file(GLOB_RECURSE DBVIEW_ENGINE_SRC CONFIGURE_DEPENDS src/*.c)
 list(FILTER DBVIEW_ENGINE_SRC EXCLUDE REGEX "src/test/")
 list(FILTER DBVIEW_ENGINE_SRC EXCLUDE REGEX "src/app/")
+list(FILTER DBVIEW_ENGINE_SRC EXCLUDE REGEX "src/vendor/")
 
 # ---- integration tests live in tests/ (Rust-style) ----
 file(GLOB DBVIEW_INTEGRATION_SRC CONFIGURE_DEPENDS tests/*.c)
+
+# ---- vendored third-party C (compiled without our strict warnings) ----
+add_library(dbview_vendor STATIC src/vendor/cjson/cJSON.c)
+target_include_directories(dbview_vendor PUBLIC src/vendor)
+target_compile_options(dbview_vendor PRIVATE -w)
 
 # ---------------------------------------------------------------------------
 # test_runner: engine (compiled with -DDB_TEST so inline unit tests register)
@@ -50,7 +56,7 @@ add_executable(test_runner
 target_include_directories(test_runner PRIVATE src)
 target_compile_definitions(test_runner PRIVATE DB_TEST)
 target_compile_options(test_runner PRIVATE ${DBVIEW_WARN})
-target_link_libraries(test_runner PRIVATE SQLite::SQLite3)
+target_link_libraries(test_runner PRIVATE SQLite::SQLite3 dbview_vendor)
 if(DBVIEW_SANITIZE)
   target_compile_options(test_runner PRIVATE ${DBVIEW_SAN_FLAGS})
   target_link_options(test_runner PRIVATE ${DBVIEW_SAN_FLAGS})
@@ -66,7 +72,7 @@ add_test(NAME unit COMMAND test_runner)
 add_library(dbview_engine STATIC ${DBVIEW_ENGINE_SRC})
 target_include_directories(dbview_engine PUBLIC src)
 target_compile_options(dbview_engine PRIVATE ${DBVIEW_WARN})
-target_link_libraries(dbview_engine PUBLIC SQLite::SQLite3)
+target_link_libraries(dbview_engine PUBLIC SQLite::SQLite3 dbview_vendor)
 
 # ---------------------------------------------------------------------------
 # Tooling targets (parity with the money_books Makefile).
@@ -84,7 +90,7 @@ add_executable(leak_runner EXCLUDE_FROM_ALL
 target_include_directories(leak_runner PRIVATE src)
 target_compile_definitions(leak_runner PRIVATE DB_TEST)
 target_compile_options(leak_runner PRIVATE ${DBVIEW_WARN} -O1 -g)
-target_link_libraries(leak_runner PRIVATE SQLite::SQLite3)
+target_link_libraries(leak_runner PRIVATE SQLite::SQLite3 dbview_vendor)
 
 add_custom_target(analyze
   COMMAND clang --analyze -DDB_TEST -Isrc -Xclang -analyzer-output=text
@@ -92,3 +98,39 @@ add_custom_target(analyze
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
   USES_TERMINAL
   COMMENT "Running clang static analyzer over engine sources")
+
+# ---------------------------------------------------------------------------
+# Native app: WebView shell (webview/webview) + React UI.
+#   Vendor webview once with scripts/fetch_webview.sh, then:
+#     cmake --build build --target dbview   (builds the UI, then the app)
+#     ./build/dbview [path/to/file.sqlite]
+# ---------------------------------------------------------------------------
+set(WV_DIR ${CMAKE_SOURCE_DIR}/src/vendor/webview)
+
+# Build the React UI bundle (ui/dist/index.html, inlined single file).
+add_custom_target(ui
+  COMMAND npm install --silent && npm run build
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/ui
+  USES_TERMINAL
+  COMMENT "Building React UI bundle")
+
+if(EXISTS ${WV_DIR}/core/src/webview.cc)
+  # webview is C++; compile it as its own lib with relaxed warnings.
+  add_library(webview_lib STATIC ${WV_DIR}/core/src/webview.cc)
+  target_include_directories(webview_lib PUBLIC ${WV_DIR}/core/include)
+  target_compile_features(webview_lib PRIVATE cxx_std_17)
+  target_compile_definitions(webview_lib PUBLIC WEBVIEW_STATIC)
+  target_compile_options(webview_lib PRIVATE -w)
+
+  add_executable(dbview EXCLUDE_FROM_ALL src/app/main.c ${DBVIEW_ENGINE_SRC})
+  target_include_directories(dbview PRIVATE src)
+  target_compile_options(dbview PRIVATE ${DBVIEW_WARN})
+  target_link_libraries(dbview PRIVATE SQLite::SQLite3 dbview_vendor webview_lib)
+  set_target_properties(dbview PROPERTIES LINKER_LANGUAGE CXX)  # link the C++ runtime for webview
+  if(APPLE)
+    target_link_libraries(dbview PRIVATE "-framework WebKit" "-framework Cocoa")
+  endif()
+  add_dependencies(dbview ui)
+else()
+  message(STATUS "webview not vendored — run scripts/fetch_webview.sh to enable the 'dbview' app target")
+endif()

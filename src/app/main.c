@@ -1,0 +1,152 @@
+/*
+ * dbview — native shell (Phase 0).
+ *
+ * Creates a system WebView window (via webview/webview), binds `dbInvoke` so the React UI
+ * can call the C engine, and loads the bundled front-end. The bridge dispatches to the SAME
+ * db_api_dispatch surface a future MCP layer will use (SPEC §6).
+ *
+ *   - `app.*` methods (open a database, report the current one) are handled here at the shell
+ *     level because they swap the active connection.
+ *   - everything else dispatches to the open connection.
+ *
+ * Built only by the `app` CMake target (needs the webview header + WebKit/Cocoa).
+ */
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+
+#include "webview/webview.h"
+#include "vendor/cjson/cJSON.h"
+#include "engine/engine.h"
+#include "api/api.h"
+
+struct app_ctx {
+  webview_t w;
+  db_conn  *conn;          /* current connection, or NULL on the launcher */
+  char      path[1024];     /* path of the current database ("" if none) */
+};
+
+/* ---- small JSON helpers ---- */
+static char *json_take(cJSON *o) {
+  char *s = cJSON_PrintUnformatted(o);
+  cJSON_Delete(o);
+  return s ? s : strdup("{\"error\":{\"code\":\"DB_ERR_OOM\",\"message\":\"print failed\"}}");
+}
+static char *json_err(db_err code, const char *msg) {
+  cJSON *env = cJSON_CreateObject();
+  cJSON *err = cJSON_AddObjectToObject(env, "error");
+  cJSON_AddStringToObject(err, "code", db_err_name(code));
+  cJSON_AddStringToObject(err, "message", msg && msg[0] ? msg : db_err_default_msg(code));
+  return json_take(env);
+}
+static const char *sget(const cJSON *a, const char *key) {
+  const cJSON *v = cJSON_GetObjectItemCaseSensitive(a, key);
+  return cJSON_IsString(v) ? v->valuestring : NULL;
+}
+
+/* Open `path`, replace the active connection, update title. */
+static db_err open_db(struct app_ctx *c, const char *path) {
+  db_conn *nc = NULL;
+  db_err e = db_open_sqlite(path, &nc);
+  if (e != DB_OK) return e;
+  if (c->conn) db_close(c->conn);
+  c->conn = nc;
+  snprintf(c->path, sizeof c->path, "%s", path);
+  if (c->w) {
+    char title[1152];
+    snprintf(title, sizeof title, "%s — dbview", path);
+    webview_set_title(c->w, title);
+  }
+  return DB_OK;
+}
+
+/* Shell-level `app.*` methods. Always returns a malloc'd JSON string. */
+static char *shell_dispatch(struct app_ctx *c, const char *method, const char *args_json) {
+  cJSON *a = (args_json && args_json[0]) ? cJSON_Parse(args_json) : cJSON_CreateObject();
+  char *out = NULL;
+
+  if (!strcmp(method, "app.current")) {
+    cJSON *o = cJSON_CreateObject();
+    if (c->conn) cJSON_AddStringToObject(o, "path", c->path);
+    else cJSON_AddNullToObject(o, "path");
+    out = json_take(o);
+
+  } else if (!strcmp(method, "app.open")) {
+    const char *path = sget(a, "path");
+    if (!path || !path[0]) out = json_err(DB_ERR_INVALID_ARG, "path required");
+    else {
+      db_err e = open_db(c, path);
+      if (e != DB_OK) out = json_err(e, db_last_error()->message);
+      else { cJSON *o = cJSON_CreateObject(); cJSON_AddStringToObject(o, "path", c->path); out = json_take(o); }
+    }
+
+  } else {
+    out = json_err(DB_ERR_UNSUPPORTED, "unknown app method");
+  }
+
+  cJSON_Delete(a);
+  return out ? out : json_err(DB_ERR_INTERNAL, "no result");
+}
+
+/* JS calls window.dbInvoke(method, argsJson). webview passes req as ["method","argsJson"]. */
+static void on_invoke(const char *id, const char *req, void *arg) {
+  struct app_ctx *c = arg;
+
+  cJSON *params = cJSON_Parse(req);
+  const char *method = "";
+  const char *args = "{}";
+  if (cJSON_IsArray(params)) {
+    cJSON *m = cJSON_GetArrayItem(params, 0);
+    cJSON *a = cJSON_GetArrayItem(params, 1);
+    if (cJSON_IsString(m)) method = m->valuestring;
+    if (cJSON_IsString(a)) args = a->valuestring;
+  }
+
+  char *result = NULL;
+  if (!strncmp(method, "app.", 4)) {
+    result = shell_dispatch(c, method, args);
+  } else if (!c->conn) {
+    result = json_err(DB_ERR_INVALID_ARG, "no database is open");
+  } else {
+    (void)db_api_dispatch(c->conn, method, args, &result);
+  }
+
+  webview_return(c->w, id, 0, result ? result : "{\"error\":{\"code\":\"DB_ERR_INTERNAL\",\"message\":\"no result\"}}");
+  free(result);
+  cJSON_Delete(params);
+}
+
+int main(int argc, char **argv) {
+  static struct app_ctx c;
+
+  webview_t w = webview_create(1, NULL);   /* debug=1 enables the Web Inspector */
+  c.w = w;
+  webview_set_title(w, "dbview");
+  webview_set_size(w, 1100, 760, WEBVIEW_HINT_NONE);
+  webview_bind(w, "dbInvoke", on_invoke, &c);
+
+  if (argc > 1) {
+    if (open_db(&c, argv[1]) != DB_OK)
+      fprintf(stderr, "failed to open '%s': %s\n", argv[1], db_last_error()->message);
+  }
+
+  /* Load the built UI; override with DBVIEW_UI_URL (e.g. http://localhost:5173) during dev. */
+  const char *url = getenv("DBVIEW_UI_URL");
+  char filebuf[1024];
+  if (!url) {
+    char cwd[768];
+    if (getcwd(cwd, sizeof cwd)) {
+      snprintf(filebuf, sizeof filebuf, "file://%s/ui/dist/index.html", cwd);
+      url = filebuf;
+    } else {
+      url = "file://ui/dist/index.html";
+    }
+  }
+  webview_navigate(w, url);
+
+  webview_run(w);
+  webview_destroy(w);
+  if (c.conn) db_close(c.conn);
+  return 0;
+}
