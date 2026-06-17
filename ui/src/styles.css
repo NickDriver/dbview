@@ -151,7 +151,19 @@ button:disabled { opacity: 0.5; cursor: default; }
 .field-row input { min-width: 220px; }
 .browse { padding: 4px 10px; }
 
-/* CodeMirror editor wrapper */
+/* CodeMirror editor wrapper + overlay tools (top-right) */
+.editor-wrap { position: relative; }
+.editor-tools {
+  position: absolute; top: 4px; right: 6px; z-index: 5;
+  display: flex; gap: 4px;
+}
+.editor-tool {
+  font-size: 11px; padding: 2px 8px; border-radius: 5px;
+  background: var(--surface); color: var(--muted); border: 1px solid var(--border);
+  opacity: 0.85;
+}
+.editor-tool:hover { opacity: 1; color: var(--accent); }
+
 .cm-editor-wrap { border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
 .cm-editor-wrap .cm-editor { font-size: 13px; }
 .cm-editor-wrap .cm-editor.cm-focused { outline: none; }

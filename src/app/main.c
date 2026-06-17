@@ -127,6 +127,17 @@ static char *shell_dispatch(struct app_ctx *c, const char *method, const char *a
     db_err e = open_memory(c, sget(a, "engine"));
     out = (e != DB_OK) ? json_err(e, db_last_error()->message) : current_json(c);
 
+  } else if (!strcmp(method, "app.clipboard_write")) {
+#ifdef DBVIEW_MACOS
+    const char *text = sget(a, "text");
+    dbview_clipboard_set(text ? text : "");
+    cJSON *o = cJSON_CreateObject();
+    cJSON_AddBoolToObject(o, "ok", 1);
+    out = json_take(o);
+#else
+    out = json_err(DB_ERR_UNSUPPORTED, "clipboard write is macOS-only for now");
+#endif
+
   } else if (!strcmp(method, "app.pick_open") || !strcmp(method, "app.pick_save")) {
 #ifdef DBVIEW_MACOS
     char *picked = !strcmp(method, "app.pick_open")
@@ -185,6 +196,9 @@ int main(int argc, char **argv) {
   webview_set_title(w, "dbview");
   webview_set_size(w, 1100, 760, WEBVIEW_HINT_NONE);
   webview_bind(w, "dbInvoke", on_invoke, &c);
+#ifdef DBVIEW_MACOS
+  dbview_install_menu();   /* enables Cmd+C/V/X/A/Z in the editor */
+#endif
 
   if (argc > 1) {
     if (open_db(&c, argv[1]) != DB_OK)

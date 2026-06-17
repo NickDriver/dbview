@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { format as formatSql } from 'sql-formatter'
 import { api, DbCallError, type ResultSet } from './bridge'
 import { SqlEditor, type EditorSchema } from './SqlEditor'
 import { ConvertPanel } from './ConvertPanel'
@@ -210,6 +211,45 @@ export function App() {
     void runQuery(q)
   }
 
+  const formatQuery = useCallback(() => {
+    try {
+      setSql((s) =>
+        formatSql(s, {
+          language: engine === 'duckdb' ? 'postgresql' : 'sqlite',
+          keywordCase: 'upper',
+        }),
+      )
+    } catch {
+      /* leave SQL unchanged if it can't be parsed for formatting */
+    }
+  }, [engine])
+
+  async function copyQuery() {
+    try {
+      await api.clipboardWrite(sql)
+    } catch {
+      try {
+        await navigator.clipboard?.writeText(sql)
+      } catch {
+        /* clipboard unavailable */
+      }
+    }
+  }
+
+  // ⌘⇧F to format
+  const formatRef = useRef(formatQuery)
+  formatRef.current = formatQuery
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'f' || e.key === 'F')) {
+        e.preventDefault()
+        formatRef.current()
+      }
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [])
+
   function toggleSort(col: number) {
     setSort((s) => (s && s.col === col ? (s.dir === 'asc' ? { col, dir: 'desc' } : null) : { col, dir: 'asc' }))
   }
@@ -345,7 +385,14 @@ export function App() {
               }}
             />
           )}
-          <SqlEditor value={sql} onChange={setSql} dark={dark} schema={schema} />
+          <SqlEditor
+            value={sql}
+            onChange={setSql}
+            dark={dark}
+            schema={schema}
+            onFormat={formatQuery}
+            onCopy={copyQuery}
+          />
           <div className="toolbar">
             <button onClick={() => runQuery()} disabled={busy}>
               Run ▸ <span className="hint">⌘⏎</span>

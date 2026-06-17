@@ -13,4 +13,13 @@ char *dbview_dialog_open(const char *title);
  * UTF-8 path, or NULL if cancelled. Caller frees. */
 char *dbview_dialog_save(const char *title, const char *default_name);
 
+/* Install a minimal app menu (App + Edit). The Edit menu is what makes the standard
+ * Cmd+C/V/X/A/Z key-equivalents reach the WKWebView content. Call once after the webview
+ * (and thus NSApplication) is created. */
+void dbview_install_menu(void);
+
+/* Put UTF-8 text on the system clipboard (reliable over file:// where navigator.clipboard
+ * is blocked). */
+void dbview_clipboard_set(const char *text);
+
 #endif /* DBVIEW_FILE_DIALOG_H */

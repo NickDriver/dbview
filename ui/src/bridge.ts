@@ -65,6 +65,7 @@ export const api = {
   pickOpen: () => dbInvoke<{ path: string | null }>('app.pick_open'),
   pickSave: (defaultName?: string) =>
     dbInvoke<{ path: string | null }>('app.pick_save', { default_name: defaultName ?? '' }),
+  clipboardWrite: (text: string) => dbInvoke<{ ok: boolean }>('app.clipboard_write', { text }),
   tables: () => dbInvoke<ResultSet>('schema.tables'),
   columns: () => dbInvoke<ResultSet>('schema.columns'),
   query: (sql: string) => dbInvoke<ResultSet>('query.run', { sql }),

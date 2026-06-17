@@ -48,11 +48,15 @@ export function SqlEditor({
   onChange,
   dark,
   schema,
+  onCopy,
+  onFormat,
 }: {
   value: string
   onChange: (v: string) => void
   dark: boolean
   schema?: EditorSchema
+  onCopy?: () => void
+  onFormat?: () => void
 }) {
   const extensions = useMemo(
     () => [
@@ -69,19 +73,33 @@ export function SqlEditor({
     [schema],
   )
   return (
-    <CodeMirror
-      value={value}
-      onChange={onChange}
-      theme={dark ? 'dark' : 'light'}
-      extensions={extensions}
-      basicSetup={{
-        lineNumbers: true,
-        foldGutter: false,
-        highlightActiveLine: true,
-        autocompletion: false, // we provide our own autocompletion extension above
-      }}
-      className="cm-editor-wrap"
-      height="140px"
-    />
+    <div className="editor-wrap">
+      <div className="editor-tools">
+        {onFormat && (
+          <button className="editor-tool" onClick={onFormat} title="Format SQL (⌘⇧F)">
+            Format
+          </button>
+        )}
+        {onCopy && (
+          <button className="editor-tool" onClick={onCopy} title="Copy whole query">
+            Copy
+          </button>
+        )}
+      </div>
+      <CodeMirror
+        value={value}
+        onChange={onChange}
+        theme={dark ? 'dark' : 'light'}
+        extensions={extensions}
+        basicSetup={{
+          lineNumbers: true,
+          foldGutter: false,
+          highlightActiveLine: true,
+          autocompletion: false, // we provide our own autocompletion extension above
+        }}
+        className="cm-editor-wrap"
+        height="140px"
+      />
+    </div>
   )
 }
