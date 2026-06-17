@@ -161,6 +161,8 @@ export function App() {
         setResult(r)
         setSort(null)
         pushHistory(text, true, r.row_count)
+        // DDL changes the schema -> refresh the Tables sidebar + editor autocompletion.
+        if (/\b(create|drop|alter|attach|detach|rename)\b/i.test(text)) void refreshSchema()
       } catch (e) {
         setResult(null)
         reportError(e)
@@ -169,7 +171,7 @@ export function App() {
         setBusy(false)
       }
     },
-    [sql],
+    [sql, refreshSchema],
   )
 
   // Global ⌘⏎ / Ctrl+⏎ to run regardless of focus.
@@ -268,7 +270,12 @@ export function App() {
 
       <div className="body">
         <aside className="sidebar">
-          <div className="sidebar-title">Tables ({tables.length})</div>
+          <div className="sidebar-title hist-head">
+            Tables ({tables.length})
+            <button className="link" onClick={() => refreshSchema()} title="Refresh tables">
+              ↻
+            </button>
+          </div>
           {tables.length === 0 && <div className="muted">— none —</div>}
           <ul>
             {tables.map((t) => (
