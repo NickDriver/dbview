@@ -110,5 +110,23 @@ button:disabled { opacity: 0.5; cursor: default; }
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 .grid thead th { position: sticky; top: 0; background: var(--grid-head); font-weight: 600; }
+.grid th.sortable { cursor: pointer; user-select: none; }
+.grid th.sortable:hover { color: var(--accent); }
+.grid .sort-ind { color: var(--accent); }
 .grid .coltype { color: var(--muted); font-weight: 400; font-size: 11px; }
 .grid td.null { color: var(--null); font-style: italic; }
+
+/* History list in the sidebar */
+.hist-head { margin-top: 14px; display: flex; align-items: center; justify-content: space-between; }
+.hist-head .clear { font-size: 11px; }
+.history { font-size: 12px; }
+.history .hist {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;
+}
+.history .hist-err { color: var(--error-fg); }
+
+/* CodeMirror editor wrapper */
+.cm-editor-wrap { border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.cm-editor-wrap .cm-editor { font-size: 13px; }
+.cm-editor-wrap .cm-editor.cm-focused { outline: none; }

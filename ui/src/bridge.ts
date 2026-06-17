@@ -54,6 +54,8 @@ export async function dbInvoke<T = unknown>(
 export const api = {
   current: () => dbInvoke<{ path: string | null }>('app.current'),
   open: (path: string) => dbInvoke<{ path: string }>('app.open', { path }),
+  newMemory: (engine: 'duckdb' | 'sqlite') =>
+    dbInvoke<{ path: string }>('app.new_memory', { engine }),
   tables: () => dbInvoke<ResultSet>('schema.tables'),
   query: (sql: string) => dbInvoke<ResultSet>('query.run', { sql }),
 }

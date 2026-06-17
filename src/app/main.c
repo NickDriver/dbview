@@ -69,6 +69,23 @@ static db_err open_db(struct app_ctx *c, const char *path) {
   return DB_OK;
 }
 
+/* Open a fresh in-memory database (DuckDB or SQLite), replace the active connection. */
+static db_err open_memory(struct app_ctx *c, const char *engine) {
+  bool duck = engine && !strcmp(engine, "duckdb");
+  db_conn *nc = NULL;
+  db_err e = duck ? db_open_duckdb_memory(&nc) : db_open_sqlite_memory(&nc);
+  if (e != DB_OK) return e;
+  if (c->conn) db_close(c->conn);
+  c->conn = nc;
+  snprintf(c->path, sizeof c->path, "(in-memory \xC2\xB7 %s)", duck ? "duckdb" : "sqlite");
+  if (c->w) {
+    char title[1152];
+    snprintf(title, sizeof title, "%s \xE2\x80\x94 dbview", c->path);
+    webview_set_title(c->w, title);
+  }
+  return DB_OK;
+}
+
 /* Shell-level `app.*` methods. Always returns a malloc'd JSON string. */
 static char *shell_dispatch(struct app_ctx *c, const char *method, const char *args_json) {
   cJSON *a = (args_json && args_json[0]) ? cJSON_Parse(args_json) : cJSON_CreateObject();
@@ -88,6 +105,11 @@ static char *shell_dispatch(struct app_ctx *c, const char *method, const char *a
       if (e != DB_OK) out = json_err(e, db_last_error()->message);
       else { cJSON *o = cJSON_CreateObject(); cJSON_AddStringToObject(o, "path", c->path); out = json_take(o); }
     }
+
+  } else if (!strcmp(method, "app.new_memory")) {
+    db_err e = open_memory(c, sget(a, "engine"));
+    if (e != DB_OK) out = json_err(e, db_last_error()->message);
+    else { cJSON *o = cJSON_CreateObject(); cJSON_AddStringToObject(o, "path", c->path); out = json_take(o); }
 
   } else {
     out = json_err(DB_ERR_UNSUPPORTED, "unknown app method");
