@@ -8,7 +8,40 @@
   --null: #b0b4ba;
   --error-bg: #fdecec;
   --error-fg: #b42318;
+  --surface: #ffffff;
+  color-scheme: light;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* Dark theme tokens, shared by explicit dark mode and system-dark. */
+:root[data-theme='dark'] {
+  --bg: #1e1f22;
+  --fg: #e6e8eb;
+  --muted: #8a8f98;
+  --border: #3a3d42;
+  --accent: #6ea0ff;
+  --grid-head: #26282c;
+  --null: #6b7078;
+  --error-bg: #3a1f1f;
+  --error-fg: #ff7a7a;
+  --surface: #26282c;
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-theme='system'] {
+    --bg: #1e1f22;
+    --fg: #e6e8eb;
+    --muted: #8a8f98;
+    --border: #3a3d42;
+    --accent: #6ea0ff;
+    --grid-head: #26282c;
+    --null: #6b7078;
+    --error-bg: #3a1f1f;
+    --error-fg: #ff7a7a;
+    --surface: #26282c;
+    color-scheme: dark;
+  }
 }
 
 * { box-sizing: border-box; }
@@ -23,7 +56,14 @@ body { background: var(--bg); color: var(--fg); font-size: 13px; }
 }
 .topbar .path { color: var(--muted); flex: 0 1 auto; }
 .topbar .open-row { margin-left: auto; display: flex; gap: 6px; }
-.topbar input { width: 280px; padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px; }
+.topbar input {
+  width: 280px; padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px;
+  background: var(--surface); color: var(--fg);
+}
+.theme-select {
+  font: inherit; padding: 4px 6px; border: 1px solid var(--border); border-radius: 6px;
+  background: var(--surface); color: var(--fg); cursor: pointer;
+}
 
 .body { display: flex; flex: 1; min-height: 0; }
 
@@ -41,13 +81,14 @@ body { background: var(--bg); color: var(--fg); font-size: 13px; }
   width: 100%; min-height: 110px; resize: vertical;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px;
   padding: 8px; border: 1px solid var(--border); border-radius: 6px;
+  background: var(--surface); color: var(--fg);
 }
 
 .toolbar { display: flex; align-items: center; gap: 12px; }
 
 button {
   font: inherit; padding: 5px 12px; border: 1px solid var(--border);
-  background: #fff; border-radius: 6px; cursor: pointer;
+  background: var(--surface); color: var(--fg); border-radius: 6px; cursor: pointer;
 }
 button:hover { border-color: var(--accent); color: var(--accent); }
 button:disabled { opacity: 0.5; cursor: default; }

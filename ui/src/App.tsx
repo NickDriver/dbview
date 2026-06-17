@@ -1,5 +1,17 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, DbCallError, type ResultSet } from './bridge'
+
+type Theme = 'light' | 'dark' | 'system'
+
+function loadTheme(): Theme {
+  try {
+    const t = localStorage.getItem('dbview-theme')
+    if (t === 'light' || t === 'dark' || t === 'system') return t
+  } catch {
+    /* localStorage may be unavailable over file:// — fall back to system */
+  }
+  return 'system'
+}
 
 export function App() {
   const [path, setPath] = useState<string | null>(null)
@@ -9,6 +21,17 @@ export function App() {
   const [result, setResult] = useState<ResultSet | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [theme, setTheme] = useState<Theme>(loadTheme)
+
+  // Apply + persist the theme. `system` defers to prefers-color-scheme via CSS.
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme
+    try {
+      localStorage.setItem('dbview-theme', theme)
+    } catch {
+      /* best-effort persistence */
+    }
+  }, [theme])
 
   const refreshTables = useCallback(async () => {
     try {
@@ -52,25 +75,43 @@ export function App() {
     }
   }
 
-  async function runQuery(q?: string) {
-    const text = (q ?? sql).trim()
-    if (!text) return
-    setBusy(true)
-    setError(null)
-    try {
-      setResult(await api.query(text))
-    } catch (e) {
-      setResult(null)
-      reportError(e)
-    } finally {
-      setBusy(false)
+  const runQuery = useCallback(
+    async (q?: string) => {
+      const text = (q ?? sql).trim()
+      if (!text) return
+      setBusy(true)
+      setError(null)
+      try {
+        setResult(await api.query(text))
+      } catch (e) {
+        setResult(null)
+        reportError(e)
+      } finally {
+        setBusy(false)
+      }
+    },
+    [sql],
+  )
+
+  // Global ⌘⏎ / Ctrl+⏎ to run, regardless of which element has focus. A textarea-only
+  // handler breaks the moment focus moves to a button (e.g. after a mouse click on Run).
+  const runRef = useRef(runQuery)
+  runRef.current = runQuery
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'Enter' || e.keyCode === 13)) {
+        e.preventDefault()
+        void runRef.current()
+      }
     }
-  }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [])
 
   function previewTable(name: string) {
     const q = `SELECT * FROM "${name}" LIMIT 100;`
     setSql(q)
-    runQuery(q)
+    void runQuery(q)
   }
 
   return (
@@ -88,6 +129,17 @@ export function App() {
           <button onClick={openDb} disabled={busy}>
             Open
           </button>
+          <select
+            className="theme-select"
+            value={theme}
+            onChange={(e) => setTheme(e.target.value as Theme)}
+            title="Theme"
+            aria-label="Theme"
+          >
+            <option value="light">☀︎ Light</option>
+            <option value="dark">☾ Dark</option>
+            <option value="system">⚙︎ System</option>
+          </select>
         </span>
       </header>
 
@@ -112,9 +164,6 @@ export function App() {
             value={sql}
             spellCheck={false}
             onChange={(e) => setSql(e.target.value)}
-            onKeyDown={(e) => {
-              if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') runQuery()
-            }}
           />
           <div className="toolbar">
             <button onClick={() => runQuery()} disabled={busy}>
