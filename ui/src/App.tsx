@@ -45,6 +45,7 @@ export function App() {
   const [engine, setEngine] = useState<'duckdb' | 'sqlite' | null>(null)
   const [openInput, setOpenInput] = useState('')
   const [tables, setTables] = useState<string[]>([])
+  const [columns, setColumns] = useState<EditorSchema>({})
   const [sql, setSql] = useState('SELECT 1 AS hello;')
   const [result, setResult] = useState<ResultSet | null>(null)
   const [sort, setSort] = useState<Sort>(null)
@@ -64,12 +65,22 @@ export function App() {
     save('dbview-history', history)
   }, [history])
 
-  const refreshTables = useCallback(async () => {
+  const refreshSchema = useCallback(async () => {
     try {
-      const r = await api.tables()
-      setTables(r.rows.map((row) => row[0] ?? ''))
+      const t = await api.tables()
+      setTables(t.rows.map((row) => row[0] ?? ''))
+      // table -> [columns], for editor autocompletion
+      const cr = await api.columns()
+      const map: EditorSchema = {}
+      for (const row of cr.rows) {
+        const tbl = row[0]
+        if (tbl == null) continue
+        ;(map[tbl] ??= []).push(row[1] ?? '')
+      }
+      setColumns(map)
     } catch (e) {
       setTables([])
+      setColumns({})
       reportError(e)
     }
   }, [])
@@ -91,10 +102,10 @@ export function App() {
       .current()
       .then((c) => {
         applyConn(c)
-        if (c.path) refreshTables()
+        if (c.path) refreshSchema()
       })
       .catch(reportError)
-  }, [refreshTables])
+  }, [refreshSchema])
 
   function reportError(e: unknown) {
     if (e instanceof DbCallError) setError(`${e.code}: ${e.message}`)
@@ -113,7 +124,7 @@ export function App() {
     await withBusy(async () => {
       applyConn(await api.open(openInput.trim()))
       setResult(null)
-      await refreshTables()
+      await refreshSchema()
     })
   }
 
@@ -121,7 +132,7 @@ export function App() {
     await withBusy(async () => {
       applyConn(await api.newMemory(kind))
       setResult(null)
-      await refreshTables()
+      await refreshSchema()
     })
   }
 
@@ -183,9 +194,11 @@ export function App() {
     setSort((s) => (s && s.col === col ? (s.dir === 'asc' ? { col, dir: 'desc' } : null) : { col, dir: 'asc' }))
   }
 
+  // Editor schema: every table is a key (so table names complete even before columns load),
+  // overlaid with the fetched column lists for column-name completion.
   const schema: EditorSchema = useMemo(
-    () => Object.fromEntries(tables.map((t) => [t, [] as string[]])),
-    [tables],
+    () => ({ ...Object.fromEntries(tables.map((t) => [t, [] as string[]])), ...columns }),
+    [tables, columns],
   )
 
   // Client-side sort of the current result. NULLs always sort last; numeric when both parse.

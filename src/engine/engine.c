@@ -159,3 +159,23 @@ db_err db_list_tables(db_conn *c, db_result **out) {
   }
   return DB_FAIL(DB_ERR_INTERNAL, "unknown engine kind");
 }
+
+db_err db_list_columns(db_conn *c, db_result **out) {
+  if (!c) return DB_FAIL(DB_ERR_INVALID_ARG, "connection not open");
+  switch (c->kind) {
+    case DB_ENGINE_SQLITE:
+      /* table-valued pragma_table_info joined per table (SQLite >= 3.16) */
+      return db_query(c,
+        "SELECT m.name AS table_name, p.name AS column_name "
+        "FROM sqlite_master m JOIN pragma_table_info(m.name) p "
+        "WHERE m.type IN ('table','view') AND m.name NOT LIKE 'sqlite_%' "
+        "ORDER BY m.name, p.cid;", out);
+    case DB_ENGINE_DUCKDB:
+      return db_query(c,
+        "SELECT table_name, column_name "
+        "FROM information_schema.columns "
+        "WHERE table_schema = 'main' "
+        "ORDER BY table_name, ordinal_position;", out);
+  }
+  return DB_FAIL(DB_ERR_INTERNAL, "unknown engine kind");
+}

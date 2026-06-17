@@ -302,6 +302,20 @@ TEST(duckdb, bad_sql_reports_error) {
   db_close(c);
 }
 
+TEST(duckdb, list_columns) {
+  db_conn *c = NULL;
+  ASSERT_OK(db_open_duckdb_memory(&c));
+  ASSERT_OK(db_exec(c, "CREATE TABLE t(id INTEGER, name VARCHAR); CREATE TABLE u(x INTEGER);"));
+  db_result *r = NULL;
+  ASSERT_OK(db_list_columns(c, &r));
+  ASSERT_ROWS(r, 3);
+  ASSERT_CELL_EQ(r, 0, 0, "t"); ASSERT_CELL_EQ(r, 0, 1, "id");
+  ASSERT_CELL_EQ(r, 1, 0, "t"); ASSERT_CELL_EQ(r, 1, 1, "name");
+  ASSERT_CELL_EQ(r, 2, 0, "u"); ASSERT_CELL_EQ(r, 2, 1, "x");
+  db_result_free(r);
+  db_close(c);
+}
+
 TEST(duckdb, list_tables) {
   db_conn *c = NULL;
   ASSERT_OK(db_open_duckdb_memory(&c));

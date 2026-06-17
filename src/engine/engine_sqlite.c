@@ -184,6 +184,20 @@ TEST(sqlite, bad_sql_reports_error_with_message) {
   db_close(c);
 }
 
+TEST(sqlite, list_columns) {
+  db_conn *c = NULL;
+  ASSERT_OK(db_open_sqlite_memory(&c));
+  ASSERT_OK(db_exec(c, "CREATE TABLE t(id INTEGER, name TEXT); CREATE TABLE u(x);"));
+  db_result *r = NULL;
+  ASSERT_OK(db_list_columns(c, &r));
+  ASSERT_ROWS(r, 3);
+  ASSERT_CELL_EQ(r, 0, 0, "t"); ASSERT_CELL_EQ(r, 0, 1, "id");
+  ASSERT_CELL_EQ(r, 1, 0, "t"); ASSERT_CELL_EQ(r, 1, 1, "name");
+  ASSERT_CELL_EQ(r, 2, 0, "u"); ASSERT_CELL_EQ(r, 2, 1, "x");
+  db_result_free(r);
+  db_close(c);
+}
+
 TEST(sqlite, opens_read_only_when_not_writable) {
   char path[256];
   snprintf(path, sizeof path, "%s/dbview_sqro_%d.sqlite",

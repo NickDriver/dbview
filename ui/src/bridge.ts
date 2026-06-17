@@ -63,5 +63,6 @@ export const api = {
   open: (path: string) => dbInvoke<ConnInfo>('app.open', { path }),
   newMemory: (engine: 'duckdb' | 'sqlite') => dbInvoke<ConnInfo>('app.new_memory', { engine }),
   tables: () => dbInvoke<ResultSet>('schema.tables'),
+  columns: () => dbInvoke<ResultSet>('schema.columns'),
   query: (sql: string) => dbInvoke<ResultSet>('query.run', { sql }),
 }

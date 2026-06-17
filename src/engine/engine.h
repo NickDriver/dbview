@@ -66,6 +66,10 @@ db_err db_exec(db_conn *c, const char *sql) DB_MUST_CHECK;
 /* List user tables (name, type) ordered by name. Convenience over sqlite_master. */
 db_err db_list_tables(db_conn *c, db_result **out) DB_MUST_CHECK;
 
+/* List columns of all user tables as (table_name, column_name), ordered by table then
+ * column position. Used to drive editor autocompletion. */
+db_err db_list_columns(db_conn *c, db_result **out) DB_MUST_CHECK;
+
 /* ---- result access / cleanup ---- */
 void        db_result_free(db_result *r);
 /* Cell as text; NULL if the cell is SQL NULL or indices are out of range. */

@@ -84,6 +84,12 @@ db_err db_api_dispatch(db_conn *c, const char *method, const char *args_json,
     if (e != DB_OK) *result_json = json_error(e, db_last_error()->message);
     else { *result_json = result_to_json(r); db_result_free(r); }
 
+  } else if (!strcmp(method, "schema.columns")) {
+    db_result *r = NULL;
+    e = db_list_columns(c, &r);
+    if (e != DB_OK) *result_json = json_error(e, db_last_error()->message);
+    else { *result_json = result_to_json(r); db_result_free(r); }
+
   } else if (!strcmp(method, "query.run")) {
     const char *sql = sget(args, "sql");
     if (!sql || !sql[0]) { *result_json = json_error(DB_ERR_INVALID_ARG, "sql is required"); e = DB_ERR_INVALID_ARG; }
