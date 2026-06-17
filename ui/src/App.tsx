@@ -121,13 +121,29 @@ export function App() {
     })
   }
 
-  async function openDb() {
-    if (!openInput.trim()) return
+  async function openPath(p: string) {
     await withBusy(async () => {
-      applyConn(await api.open(openInput.trim()))
+      applyConn(await api.open(p))
       setResult(null)
       await refreshSchema()
     })
+  }
+
+  async function openDb() {
+    if (!openInput.trim()) return
+    await openPath(openInput.trim())
+  }
+
+  async function browseOpen() {
+    try {
+      const r = await api.pickOpen()
+      if (r.path) {
+        setOpenInput(r.path)
+        await openPath(r.path)
+      }
+    } catch (e) {
+      reportError(e)
+    }
   }
 
   async function newMemory(kind: 'duckdb' | 'sqlite') {
@@ -245,6 +261,9 @@ export function App() {
             placeholder="/path/to/file.sqlite or .duckdb"
             onKeyDown={(e) => e.key === 'Enter' && openDb()}
           />
+          <button onClick={browseOpen} disabled={busy} title="Browse for a database file">
+            Browse…
+          </button>
           <button onClick={openDb} disabled={busy}>
             Open
           </button>

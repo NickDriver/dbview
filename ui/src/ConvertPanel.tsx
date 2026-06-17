@@ -44,6 +44,20 @@ export function ConvertPanel({
     return p.endsWith('/') ? `${p}${table || 'export'}.${ext}` : p
   }
 
+  async function browse(target: 'open' | 'save', set: (v: string) => void, defaultName?: string) {
+    try {
+      const r = target === 'open' ? await api.pickOpen() : await api.pickSave(defaultName)
+      if (r.path) set(r.path)
+    } catch (e) {
+      setErr(e instanceof DbCallError ? `${e.code}: ${e.message}` : String(e))
+    }
+  }
+  const browseBtn = (onClick: () => void) => (
+    <button type="button" className="browse" onClick={onClick} title="Browse…">
+      …
+    </button>
+  )
+
   async function generate() {
     setErr(null)
     try {
@@ -112,19 +126,19 @@ export function ConvertPanel({
       <div className="convert-fields">
         {op === 'import_csv' && (
           <>
-            <label>CSV path<input value={path} onChange={(e) => setPath(e.target.value)} placeholder="/path/to/data.csv" /></label>
+            <label>CSV path<span className="field-row"><input value={path} onChange={(e) => setPath(e.target.value)} placeholder="/path/to/data.csv" />{browseBtn(() => browse('open', setPath))}</span></label>
             <label>New table<input value={table} onChange={(e) => setTable(e.target.value)} placeholder="my_table" /></label>
           </>
         )}
         {(op === 'export_parquet' || op === 'export_csv') && (
           <>
             <label>Source table{tableSelect(table, setTable, 'table')}</label>
-            <label>Output path<input value={path} onChange={(e) => setPath(e.target.value)} placeholder={op === 'export_parquet' ? '/path/out.parquet' : '/path/out.csv'} /></label>
+            <label>Output path<span className="field-row"><input value={path} onChange={(e) => setPath(e.target.value)} placeholder={op === 'export_parquet' ? '/path/out.parquet' : '/path/out.csv'} />{browseBtn(() => browse('save', setPath, `${table || 'export'}.${op === 'export_parquet' ? 'parquet' : 'csv'}`))}</span></label>
           </>
         )}
         {op === 'attach_sqlite' && (
           <>
-            <label>SQLite path<input value={path} onChange={(e) => setPath(e.target.value)} placeholder="/path/app.sqlite" /></label>
+            <label>SQLite path<span className="field-row"><input value={path} onChange={(e) => setPath(e.target.value)} placeholder="/path/app.sqlite" />{browseBtn(() => browse('open', setPath))}</span></label>
             <label>Alias<input value={alias} onChange={(e) => setAlias(e.target.value)} placeholder="src" /></label>
           </>
         )}

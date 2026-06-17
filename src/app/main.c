@@ -20,6 +20,9 @@
 #include "vendor/cjson/cJSON.h"
 #include "engine/engine.h"
 #include "api/api.h"
+#ifdef DBVIEW_MACOS
+#include "file_dialog.h"
+#endif
 
 struct app_ctx {
   webview_t w;
@@ -123,6 +126,20 @@ static char *shell_dispatch(struct app_ctx *c, const char *method, const char *a
   } else if (!strcmp(method, "app.new_memory")) {
     db_err e = open_memory(c, sget(a, "engine"));
     out = (e != DB_OK) ? json_err(e, db_last_error()->message) : current_json(c);
+
+  } else if (!strcmp(method, "app.pick_open") || !strcmp(method, "app.pick_save")) {
+#ifdef DBVIEW_MACOS
+    char *picked = !strcmp(method, "app.pick_open")
+                       ? dbview_dialog_open("Open a SQLite or DuckDB database")
+                       : dbview_dialog_save("Choose where to save", sget(a, "default_name"));
+    cJSON *o = cJSON_CreateObject();
+    if (picked) cJSON_AddStringToObject(o, "path", picked);
+    else cJSON_AddNullToObject(o, "path");   /* null = user cancelled */
+    free(picked);
+    out = json_take(o);
+#else
+    out = json_err(DB_ERR_UNSUPPORTED, "native file dialogs are macOS-only for now");
+#endif
 
   } else {
     out = json_err(DB_ERR_UNSUPPORTED, "unknown app method");

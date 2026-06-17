@@ -147,6 +147,9 @@ button:disabled { opacity: 0.5; cursor: default; }
   background: var(--surface); color: var(--fg); min-width: 220px;
 }
 .convert-actions { display: flex; align-items: center; gap: 10px; }
+.field-row { display: flex; gap: 4px; align-items: center; }
+.field-row input { min-width: 220px; }
+.browse { padding: 4px 10px; }
 
 /* CodeMirror editor wrapper */
 .cm-editor-wrap { border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
