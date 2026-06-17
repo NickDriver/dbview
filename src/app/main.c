@@ -45,10 +45,18 @@ static const char *sget(const cJSON *a, const char *key) {
   return cJSON_IsString(v) ? v->valuestring : NULL;
 }
 
+/* Pick the engine from the file extension (.duckdb/.ddb -> DuckDB, else SQLite). */
+static bool has_suffix(const char *s, const char *suf) {
+  size_t ls = strlen(s), lf = strlen(suf);
+  return ls >= lf && strcmp(s + ls - lf, suf) == 0;
+}
+
 /* Open `path`, replace the active connection, update title. */
 static db_err open_db(struct app_ctx *c, const char *path) {
   db_conn *nc = NULL;
-  db_err e = db_open_sqlite(path, &nc);
+  db_err e = (has_suffix(path, ".duckdb") || has_suffix(path, ".ddb"))
+                 ? db_open_duckdb(path, &nc)
+                 : db_open_sqlite(path, &nc);
   if (e != DB_OK) return e;
   if (c->conn) db_close(c->conn);
   c->conn = nc;

@@ -43,6 +43,7 @@ of a phase. Each phase also ships a **minimal visible UI slice** so progress is 
 
 ## Build / run (filled in as Phase 0 lands)
 - `scripts/fetch_webview.sh` — vendor the webview library once.
+- `scripts/fetch_duckdb.sh` — vendor the DuckDB C library once (~109M, gitignored).
 - `cmake -B build && cmake --build build` — engine + app.
 - `ctest --test-dir build` — run tests.
 - `cd ui && npm install && npm run build` — build the UI bundle.

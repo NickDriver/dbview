@@ -46,6 +46,8 @@ typedef struct {
 /* ---- connection lifecycle ---- */
 db_err db_open_sqlite(const char *path, db_conn **out) DB_MUST_CHECK;
 db_err db_open_sqlite_memory(db_conn **out) DB_MUST_CHECK;  /* ":memory:", for tests */
+db_err db_open_duckdb(const char *path, db_conn **out) DB_MUST_CHECK;
+db_err db_open_duckdb_memory(db_conn **out) DB_MUST_CHECK;  /* in-memory, for tests */
 void   db_close(db_conn *c);
 
 db_engine_kind db_conn_kind(const db_conn *c);

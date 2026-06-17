@@ -9,8 +9,9 @@
 *.profdata
 *.plist
 
-# Vendored deps (fetched via scripts/)
+# Vendored deps (fetched via scripts/ — not committed)
 /src/vendor/webview/
+/src/vendor/duckdb/
 
 # UI
 /ui/node_modules/
