@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, DbCallError, type ResultSet } from './bridge'
 import { SqlEditor, type EditorSchema } from './SqlEditor'
+import { ConvertPanel } from './ConvertPanel'
 
 type Theme = 'light' | 'dark' | 'system'
 type Sort = { col: number; dir: 'asc' | 'desc' } | null
@@ -51,6 +52,7 @@ export function App() {
   const [sort, setSort] = useState<Sort>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [showConvert, setShowConvert] = useState(false)
   const [theme, setTheme] = useState<Theme>(() => load<Theme>('dbview-theme', 'system'))
   const [history, setHistory] = useState<HistItem[]>(() => load<HistItem[]>('dbview-history', []))
 
@@ -305,10 +307,25 @@ export function App() {
         </aside>
 
         <main className="main">
+          {showConvert && (
+            <ConvertPanel
+              tables={tables}
+              isDuckDB={engine === 'duckdb'}
+              onClose={() => setShowConvert(false)}
+              onNeedDuckDB={() => newMemory('duckdb')}
+              onGenerated={(generated) => {
+                setSql(generated)
+                setShowConvert(false)
+              }}
+            />
+          )}
           <SqlEditor value={sql} onChange={setSql} dark={dark} schema={schema} />
           <div className="toolbar">
             <button onClick={() => runQuery()} disabled={busy}>
               Run ▸ <span className="hint">⌘⏎</span>
+            </button>
+            <button onClick={() => setShowConvert((v) => !v)} title="Convert data (CSV / SQLite / DuckDB / Parquet)">
+              Convert ▾
             </button>
             {result && (
               <span className="muted">

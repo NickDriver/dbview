@@ -65,4 +65,16 @@ export const api = {
   tables: () => dbInvoke<ResultSet>('schema.tables'),
   columns: () => dbInvoke<ResultSet>('schema.columns'),
   query: (sql: string) => dbInvoke<ResultSet>('query.run', { sql }),
+  convert: {
+    importCsv: (table: string, path: string) =>
+      dbInvoke<{ sql: string }>('convert.import_csv', { table, path }),
+    exportParquet: (table: string, path: string) =>
+      dbInvoke<{ sql: string }>('convert.export_parquet', { table, path }),
+    exportCsv: (table: string, path: string) =>
+      dbInvoke<{ sql: string }>('convert.export_csv', { table, path }),
+    attachSqlite: (path: string, alias: string) =>
+      dbInvoke<{ sql: string }>('convert.attach_sqlite', { path, alias }),
+    copyTable: (src_schema: string, src: string, dst: string) =>
+      dbInvoke<{ sql: string }>('convert.copy_table', { src_schema, src, dst }),
+  },
 }

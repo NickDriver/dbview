@@ -4,6 +4,7 @@
  */
 #include "api.h"
 
+#include "../convert/convert.h"
 #include "../vendor/cjson/cJSON.h"
 
 #include <stdlib.h>
@@ -95,6 +96,32 @@ db_err db_api_dispatch(db_conn *c, const char *method, const char *args_json,
     if (!sql || !sql[0]) { *result_json = json_error(DB_ERR_INVALID_ARG, "sql is required"); e = DB_ERR_INVALID_ARG; }
     else e = run_query(c, sql, result_json);
 
+  } else if (!strncmp(method, "convert.", 8)) {
+    /* convert.* build (don't run) DuckDB SQL the UI shows in the editor for review + run. */
+    char *sql = NULL;
+    const char *m = method + 8;
+    if (!strcmp(m, "import_csv"))
+      e = db_sql_import_csv(sget(args, "table"), sget(args, "path"), &sql);
+    else if (!strcmp(m, "export_parquet"))
+      e = db_sql_export_parquet(sget(args, "table"), sget(args, "path"), &sql);
+    else if (!strcmp(m, "export_csv"))
+      e = db_sql_export_csv(sget(args, "table"), sget(args, "path"), &sql);
+    else if (!strcmp(m, "attach_sqlite"))
+      e = db_sql_attach_sqlite(sget(args, "path"), sget(args, "alias"), &sql);
+    else if (!strcmp(m, "copy_table"))
+      e = db_sql_copy_table(sget(args, "src_schema"), sget(args, "src"), sget(args, "dst"), &sql);
+    else { *result_json = json_error(DB_ERR_UNSUPPORTED, "unknown convert method"); e = DB_ERR_UNSUPPORTED; }
+
+    if (!*result_json) {
+      if (e != DB_OK) *result_json = json_error(e, db_last_error()->message);
+      else {
+        cJSON *o = cJSON_CreateObject();
+        cJSON_AddStringToObject(o, "sql", sql);
+        *result_json = json_take(o);
+      }
+    }
+    free(sql);
+
   } else {
     *result_json = json_error(DB_ERR_UNSUPPORTED, "unknown method");
     e = DB_ERR_UNSUPPORTED;
@@ -166,6 +193,23 @@ TEST(api, bad_sql_returns_error_envelope) {
   cJSON *err = cJSON_GetObjectItem(j, "error");
   ASSERT(err != NULL);
   ASSERT_STR_EQ(cJSON_GetObjectItem(err, "code")->valuestring, "DB_ERR_SQL");
+  cJSON_Delete(j);
+  db_close(c);
+}
+
+TEST(api, convert_returns_sql) {
+  db_conn *c = NULL;
+  ASSERT_OK(db_open_duckdb_memory(&c));
+  db_err e;
+  cJSON *j = dispatch_json(c, "convert.import_csv", "{\"table\":\"people\",\"path\":\"/tmp/d.csv\"}", &e);
+  ASSERT_ERR_EQ(e, DB_OK);
+  ASSERT_STR_EQ(cJSON_GetObjectItem(j, "sql")->valuestring,
+                "CREATE TABLE \"people\" AS SELECT * FROM read_csv_auto('/tmp/d.csv');");
+  cJSON_Delete(j);
+
+  j = dispatch_json(c, "convert.import_csv", "{\"table\":\"\",\"path\":\"/tmp/d.csv\"}", &e);
+  ASSERT_ERR_EQ(e, DB_ERR_INVALID_ARG);
+  ASSERT(cJSON_GetObjectItem(j, "error") != NULL);
   cJSON_Delete(j);
   db_close(c);
 }

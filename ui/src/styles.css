@@ -131,6 +131,23 @@ button:disabled { opacity: 0.5; cursor: default; }
 }
 .history .hist-err { color: var(--error-fg); }
 
+/* Convert panel */
+.convert {
+  border: 1px solid var(--border); border-radius: 6px; padding: 10px;
+  background: var(--grid-head); display: flex; flex-direction: column; gap: 8px;
+}
+.convert-head { display: flex; align-items: center; gap: 10px; }
+.convert-head select { font: inherit; padding: 4px 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--fg); }
+.convert-head .link { margin-left: auto; }
+.convert-note { font-size: 12px; color: var(--muted); }
+.convert-fields { display: flex; flex-wrap: wrap; gap: 10px; }
+.convert-fields label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--muted); }
+.convert-fields input, .convert-fields select {
+  font: inherit; padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px;
+  background: var(--surface); color: var(--fg); min-width: 220px;
+}
+.convert-actions { display: flex; align-items: center; gap: 10px; }
+
 /* CodeMirror editor wrapper */
 .cm-editor-wrap { border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
 .cm-editor-wrap .cm-editor { font-size: 13px; }
