@@ -1,0 +1,31 @@
+# Build
+/build/
+*.o
+*.a
+*.dSYM/
+*.gcda
+*.gcno
+*.profraw
+*.profdata
+*.plist
+
+# Vendored deps (fetched via scripts/)
+/src/vendor/webview/
+
+# UI
+/ui/node_modules/
+/ui/dist/
+
+# Local DB scratch files
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.duckdb
+*.duckdb.wal
+*.parquet
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
