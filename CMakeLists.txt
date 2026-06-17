@@ -27,6 +27,9 @@ set(DBVIEW_WARN
 set(DBVIEW_SAN_FLAGS
   -fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=all)
 
+# ---- dependencies ----
+find_package(SQLite3 REQUIRED)
+
 # ---- engine sources: all of src/, minus the test runner and (future) app entry ----
 file(GLOB_RECURSE DBVIEW_ENGINE_SRC CONFIGURE_DEPENDS src/*.c)
 list(FILTER DBVIEW_ENGINE_SRC EXCLUDE REGEX "src/test/")
@@ -47,6 +50,7 @@ add_executable(test_runner
 target_include_directories(test_runner PRIVATE src)
 target_compile_definitions(test_runner PRIVATE DB_TEST)
 target_compile_options(test_runner PRIVATE ${DBVIEW_WARN})
+target_link_libraries(test_runner PRIVATE SQLite::SQLite3)
 if(DBVIEW_SANITIZE)
   target_compile_options(test_runner PRIVATE ${DBVIEW_SAN_FLAGS})
   target_link_options(test_runner PRIVATE ${DBVIEW_SAN_FLAGS})
@@ -62,6 +66,7 @@ add_test(NAME unit COMMAND test_runner)
 add_library(dbview_engine STATIC ${DBVIEW_ENGINE_SRC})
 target_include_directories(dbview_engine PUBLIC src)
 target_compile_options(dbview_engine PRIVATE ${DBVIEW_WARN})
+target_link_libraries(dbview_engine PUBLIC SQLite::SQLite3)
 
 # ---------------------------------------------------------------------------
 # Tooling targets (parity with the money_books Makefile).
@@ -79,6 +84,7 @@ add_executable(leak_runner EXCLUDE_FROM_ALL
 target_include_directories(leak_runner PRIVATE src)
 target_compile_definitions(leak_runner PRIVATE DB_TEST)
 target_compile_options(leak_runner PRIVATE ${DBVIEW_WARN} -O1 -g)
+target_link_libraries(leak_runner PRIVATE SQLite::SQLite3)
 
 add_custom_target(analyze
   COMMAND clang --analyze -DDB_TEST -Isrc -Xclang -analyzer-output=text
