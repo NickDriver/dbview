@@ -45,6 +45,24 @@ static const char *sget(const cJSON *a, const char *key) {
   return cJSON_IsString(v) ? v->valuestring : NULL;
 }
 
+static const char *engine_name(db_conn *c) {
+  return db_conn_kind(c) == DB_ENGINE_DUCKDB ? "duckdb" : "sqlite";
+}
+
+/* {path, read_only, engine} for the current connection, or {path:null} when none. */
+static char *current_json(struct app_ctx *c) {
+  cJSON *o = cJSON_CreateObject();
+  if (c->conn) {
+    cJSON_AddStringToObject(o, "path", c->path);
+    cJSON_AddBoolToObject(o, "read_only", db_conn_read_only(c->conn));
+    cJSON_AddBoolToObject(o, "snapshot", db_conn_is_snapshot(c->conn));
+    cJSON_AddStringToObject(o, "engine", engine_name(c->conn));
+  } else {
+    cJSON_AddNullToObject(o, "path");
+  }
+  return json_take(o);
+}
+
 /* Pick the engine from the file extension (.duckdb/.ddb -> DuckDB, else SQLite). */
 static bool has_suffix(const char *s, const char *suf) {
   size_t ls = strlen(s), lf = strlen(suf);
@@ -92,24 +110,19 @@ static char *shell_dispatch(struct app_ctx *c, const char *method, const char *a
   char *out = NULL;
 
   if (!strcmp(method, "app.current")) {
-    cJSON *o = cJSON_CreateObject();
-    if (c->conn) cJSON_AddStringToObject(o, "path", c->path);
-    else cJSON_AddNullToObject(o, "path");
-    out = json_take(o);
+    out = current_json(c);
 
   } else if (!strcmp(method, "app.open")) {
     const char *path = sget(a, "path");
     if (!path || !path[0]) out = json_err(DB_ERR_INVALID_ARG, "path required");
     else {
       db_err e = open_db(c, path);
-      if (e != DB_OK) out = json_err(e, db_last_error()->message);
-      else { cJSON *o = cJSON_CreateObject(); cJSON_AddStringToObject(o, "path", c->path); out = json_take(o); }
+      out = (e != DB_OK) ? json_err(e, db_last_error()->message) : current_json(c);
     }
 
   } else if (!strcmp(method, "app.new_memory")) {
     db_err e = open_memory(c, sget(a, "engine"));
-    if (e != DB_OK) out = json_err(e, db_last_error()->message);
-    else { cJSON *o = cJSON_CreateObject(); cJSON_AddStringToObject(o, "path", c->path); out = json_take(o); }
+    out = (e != DB_OK) ? json_err(e, db_last_error()->message) : current_json(c);
 
   } else {
     out = json_err(DB_ERR_UNSUPPORTED, "unknown app method");

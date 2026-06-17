@@ -54,7 +54,12 @@ body { background: var(--bg); color: var(--fg); font-size: 13px; }
   display: flex; align-items: center; gap: 12px;
   padding: 8px 12px; border-bottom: 1px solid var(--border);
 }
-.topbar .path { color: var(--muted); flex: 0 1 auto; }
+.topbar .path { color: var(--muted); flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.badge {
+  font-size: 11px; padding: 1px 7px; border-radius: 10px; white-space: nowrap;
+  background: var(--grid-head); color: var(--muted); border: 1px solid var(--border);
+}
+.badge.ro { color: var(--error-fg); border-color: var(--error-fg); }
 .topbar .open-row { margin-left: auto; display: flex; gap: 6px; }
 .topbar input {
   width: 280px; padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px;

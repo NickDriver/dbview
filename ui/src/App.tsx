@@ -40,6 +40,9 @@ function useEffectiveDark(theme: Theme): boolean {
 
 export function App() {
   const [path, setPath] = useState<string | null>(null)
+  const [readOnly, setReadOnly] = useState(false)
+  const [snapshot, setSnapshot] = useState(false)
+  const [engine, setEngine] = useState<'duckdb' | 'sqlite' | null>(null)
   const [openInput, setOpenInput] = useState('')
   const [tables, setTables] = useState<string[]>([])
   const [sql, setSql] = useState('SELECT 1 AS hello;')
@@ -71,11 +74,23 @@ export function App() {
     }
   }, [])
 
+  function applyConn(c: {
+    path: string | null
+    read_only?: boolean
+    snapshot?: boolean
+    engine?: 'duckdb' | 'sqlite'
+  }) {
+    setPath(c.path)
+    setReadOnly(!!c.read_only)
+    setSnapshot(!!c.snapshot)
+    setEngine(c.engine ?? null)
+  }
+
   useEffect(() => {
     api
       .current()
       .then((c) => {
-        setPath(c.path)
+        applyConn(c)
         if (c.path) refreshTables()
       })
       .catch(reportError)
@@ -96,17 +111,15 @@ export function App() {
   async function openDb() {
     if (!openInput.trim()) return
     await withBusy(async () => {
-      const r = await api.open(openInput.trim())
-      setPath(r.path)
+      applyConn(await api.open(openInput.trim()))
       setResult(null)
       await refreshTables()
     })
   }
 
-  async function newMemory(engine: 'duckdb' | 'sqlite') {
+  async function newMemory(kind: 'duckdb' | 'sqlite') {
     await withBusy(async () => {
-      const r = await api.newMemory(engine)
-      setPath(r.path)
+      applyConn(await api.newMemory(kind))
       setResult(null)
       await refreshTables()
     })
@@ -199,6 +212,15 @@ export function App() {
       <header className="topbar">
         <strong>dbview</strong>
         <span className="path">{path ?? 'no database open'}</span>
+        {engine && <span className="badge">{engine}</span>}
+        {readOnly && !snapshot && (
+          <span className="badge ro" title="opened read-only (file is in use or on read-only media)">read-only</span>
+        )}
+        {snapshot && (
+          <span className="badge ro" title="the file was locked by another process; viewing a point-in-time snapshot copy">
+            snapshot
+          </span>
+        )}
         <span className="open-row">
           <input
             value={openInput}

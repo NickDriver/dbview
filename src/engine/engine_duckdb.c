@@ -8,6 +8,7 @@
 #include "engine_internal.h"
 
 #include "duckdb.h"
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -47,6 +48,24 @@ static const char *type_name(duckdb_type t) {
   }
 }
 
+/* Open a DuckDB database with an explicit access mode, capturing the verbatim error. */
+static db_err duck_open(const char *path, bool read_only, duckdb_database *out_db) {
+  duckdb_config cfg = NULL;
+  if (duckdb_create_config(&cfg) != DuckDBSuccess)
+    return DB_FAIL(DB_ERR_DUCKDB, "create_config failed");
+  duckdb_set_config(cfg, "access_mode", read_only ? "READ_ONLY" : "READ_WRITE");
+  char *err = NULL;
+  duckdb_state st = duckdb_open_ext(path, out_db, cfg, &err);
+  duckdb_destroy_config(&cfg);
+  if (st != DuckDBSuccess) {
+    db_err e = db_set_error(DB_ERR_DUCKDB, __FILE__, __LINE__, __func__, "open: %s",
+                            err ? err : "(no message)");
+    duckdb_free(err);
+    return e;
+  }
+  return DB_OK;
+}
+
 /* ---- lifecycle ---- */
 static db_err open_duckdb(const char *path, db_conn **out) {
   if (!out) return DB_FAIL(DB_ERR_INVALID_ARG, "out is NULL");
@@ -57,12 +76,31 @@ static db_err open_duckdb(const char *path, db_conn **out) {
 
   duckdb_database database = NULL;
   duckdb_connection connection = NULL;
-  /* path NULL/"" => in-memory database */
-  const char *p = (path && path[0]) ? path : NULL;
-  if (duckdb_open(p, &database) != DuckDBSuccess) {
-    free(c->path); free(c);
-    return DB_FAIL(DB_ERR_DUCKDB, "open failed");
+  const char *p = (path && path[0]) ? path : NULL;  /* NULL/"" => in-memory */
+
+  if (!p) {
+    /* in-memory is always read-write */
+    if (duck_open(NULL, false, &database) != DB_OK) { free(c->path); free(c); return DB_ERR_DUCKDB; }
+  } else {
+    /* A viewer opens files read-write when it can, falls back to read-only (read-only media),
+     * and finally to a temp snapshot copy when the original is exclusively locked by another
+     * process (DuckDB blocks even read-only opens then). */
+    db_err e = duck_open(p, false, &database);
+    if (e != DB_OK) {
+      e = duck_open(p, true, &database);     /* read-only retry */
+      if (e == DB_OK) c->read_only = true;
+    }
+    if (e != DB_OK) {
+      char *tmp = NULL;
+      if (dbe_snapshot_copy(p, &tmp) != DB_OK) { free(c->path); free(c); return e; }  /* keep lock error */
+      db_err se = duck_open(tmp, true, &database);
+      if (se != DB_OK) { remove(tmp); free(tmp); free(c->path); free(c); return se; }
+      c->read_only = true;
+      c->snapshot = true;
+      c->temp_copy = tmp;
+    }
   }
+
   if (duckdb_connect(database, &connection) != DuckDBSuccess) {
     duckdb_close(&database);
     free(c->path); free(c);
@@ -159,13 +197,68 @@ db_err dbe_duckdb_exec(db_conn *c, const char *sql) {
  * ------------------------------------------------------------------------- */
 #ifdef DB_TEST
 #include "engine_test.h"
+#include <sys/stat.h>  /* chmod */
+#include <unistd.h>    /* unlink */
 
 TEST(duckdb, open_memory_kind) {
   db_conn *c = NULL;
   ASSERT_OK(db_open_duckdb_memory(&c));
   ASSERT_EQ_INT(db_conn_kind(c), DB_ENGINE_DUCKDB);
   ASSERT_STR_EQ(db_conn_path(c), "");
+  ASSERT(db_conn_read_only(c) == false);
   db_close(c);
+}
+
+/* Regression: a DuckDB file that can't be opened read-write (read-only on disk, or held
+ * by another process) must still open by falling back to read-only, with rows readable.
+ * This is the bug where an in-use .duckdb file showed "no records". (Cross-process locking
+ * is verified manually; here we force the condition with a read-only file on disk.) */
+TEST(duckdb, opens_read_only_when_not_writable) {
+  char path[256];
+  snprintf(path, sizeof path, "%s/dbview_ro_%d.duckdb",
+           getenv("TMPDIR") ? getenv("TMPDIR") : "/tmp", (int)getpid());
+  unlink(path);
+
+  db_conn *w = NULL;
+  ASSERT_OK(db_open_duckdb(path, &w));
+  ASSERT(db_conn_read_only(w) == false);
+  ASSERT_OK(db_exec(w, "CREATE TABLE t(x INTEGER); INSERT INTO t VALUES (1),(2),(3);"));
+  db_close(w);
+
+  chmod(path, 0444);   /* read-only on disk -> RW open must fail and fall back */
+  db_conn *v = NULL;
+  ASSERT_OK(db_open_duckdb(path, &v));
+  ASSERT(db_conn_read_only(v) == true);
+  ASSERT_SQL_SCALAR(v, "SELECT COUNT(*) FROM t;", "3");
+  db_close(v);
+
+  chmod(path, 0644);
+  unlink(path);
+}
+
+/* The snapshot mechanism the locked-file fallback relies on: a copy is a valid, readable DB. */
+TEST(duckdb, snapshot_copy_is_readable) {
+  char path[256];
+  snprintf(path, sizeof path, "%s/dbview_snapsrc_%d.duckdb",
+           getenv("TMPDIR") ? getenv("TMPDIR") : "/tmp", (int)getpid());
+  unlink(path);
+  db_conn *w = NULL;
+  ASSERT_OK(db_open_duckdb(path, &w));
+  ASSERT_OK(db_exec(w, "CREATE TABLE t(x INTEGER); INSERT INTO t VALUES (1),(2),(3);"));
+  db_close(w);
+
+  char *snap = NULL;
+  ASSERT_OK(dbe_snapshot_copy(path, &snap));
+  ASSERT(snap != NULL && strstr(snap, "dbview_snap_") != NULL);
+
+  db_conn *v = NULL;
+  ASSERT_OK(db_open_duckdb(snap, &v));
+  ASSERT_SQL_SCALAR(v, "SELECT COUNT(*) FROM t;", "3");
+  db_close(v);
+
+  remove(snap);
+  free(snap);
+  unlink(path);
 }
 
 TEST(duckdb, query_rows_cols_types_nulls) {

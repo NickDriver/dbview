@@ -52,6 +52,8 @@ void   db_close(db_conn *c);
 
 db_engine_kind db_conn_kind(const db_conn *c);
 const char    *db_conn_path(const db_conn *c);  /* "" for in-memory */
+bool           db_conn_read_only(const db_conn *c);
+bool           db_conn_is_snapshot(const db_conn *c);  /* opened from a temp copy of a locked file */
 
 /* ---- statements ---- */
 /* Run a statement that returns rows. *out is set to a malloc'd db_result on success

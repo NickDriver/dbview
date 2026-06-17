@@ -37,13 +37,20 @@ static db_err open_with_flags(const char *path, int flags, db_conn **out) {
     return e;
   }
   c->h1 = db;
+  /* The accurate read-only signal: SQLite may open a read-only file in RW mode but mark
+   * the database read-only internally. Ask it directly rather than infer from flags. */
+  c->read_only = sqlite3_db_readonly(db, "main") != 0;
   *out = c;
   return DB_OK;
 }
 
 db_err db_open_sqlite(const char *path, db_conn **out) {
   if (!path || !path[0]) return DB_FAIL(DB_ERR_INVALID_ARG, "path required");
-  return open_with_flags(path, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, out);
+  /* Try read-write; fall back to read-only so files on read-only media / held elsewhere
+   * still open in the viewer. */
+  db_err e = open_with_flags(path, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, out);
+  if (e != DB_OK) e = open_with_flags(path, SQLITE_OPEN_READONLY, out);
+  return e;
 }
 
 db_err db_open_sqlite_memory(db_conn **out) {
@@ -122,6 +129,8 @@ db_err dbe_sqlite_exec(db_conn *c, const char *sql) {
  * ------------------------------------------------------------------------- */
 #ifdef DB_TEST
 #include "engine_test.h"
+#include <sys/stat.h>  /* chmod */
+#include <unistd.h>    /* unlink */
 
 TEST(sqlite, open_memory_kind_and_path) {
   db_conn *c = NULL;
@@ -173,6 +182,29 @@ TEST(sqlite, bad_sql_reports_error_with_message) {
   ASSERT(r == NULL);
   ASSERT(strstr(db_last_error()->message, "prepare:") != NULL);
   db_close(c);
+}
+
+TEST(sqlite, opens_read_only_when_not_writable) {
+  char path[256];
+  snprintf(path, sizeof path, "%s/dbview_sqro_%d.sqlite",
+           getenv("TMPDIR") ? getenv("TMPDIR") : "/tmp", (int)getpid());
+  unlink(path);
+
+  db_conn *w = NULL;
+  ASSERT_OK(db_open_sqlite(path, &w));
+  ASSERT(db_conn_read_only(w) == false);
+  ASSERT_OK(db_exec(w, "CREATE TABLE t(x); INSERT INTO t VALUES (1),(2),(3);"));
+  db_close(w);
+
+  chmod(path, 0444);
+  db_conn *v = NULL;
+  ASSERT_OK(db_open_sqlite(path, &v));
+  ASSERT(db_conn_read_only(v) == true);
+  ASSERT_SQL_SCALAR(v, "SELECT COUNT(*) FROM t;", "3");
+  db_close(v);
+
+  chmod(path, 0644);
+  unlink(path);
 }
 
 TEST(sqlite, list_tables_orders_and_excludes_internal) {

@@ -5,8 +5,11 @@
  */
 #include "engine_internal.h"
 
+#include <errno.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 /* ---- shared helpers ---- */
 char *dbe_strdup(const char *s) {
@@ -35,6 +38,38 @@ db_result *dbe_result_alloc(int n_cols) {
     if (!r->cols) { free(r); (void)DB_FAIL(DB_ERR_OOM, "alloc cols"); return NULL; }
   }
   return r;
+}
+
+db_err dbe_snapshot_copy(const char *src, char **out_tmp) {
+  *out_tmp = NULL;
+  const char *tmpdir = getenv("TMPDIR");
+  if (!tmpdir || !tmpdir[0]) tmpdir = "/tmp";
+  const char *ext = strrchr(src, '.');
+  if (!ext) ext = "";
+
+  static int counter = 0;   /* + pid keeps the name unique without Date/random */
+  char path[1280];
+  snprintf(path, sizeof path, "%s/dbview_snap_%d_%d%s", tmpdir, (int)getpid(), ++counter, ext);
+
+  FILE *in = fopen(src, "rb");
+  if (!in) return DB_FAIL(DB_ERR_IO, "snapshot: open source: %s", strerror(errno));
+  FILE *out = fopen(path, "wb");
+  if (!out) { fclose(in); return DB_FAIL(DB_ERR_IO, "snapshot: create temp: %s", strerror(errno)); }
+
+  char buf[65536];
+  size_t k;
+  db_err e = DB_OK;
+  while ((k = fread(buf, 1, sizeof buf, in)) > 0) {
+    if (fwrite(buf, 1, k, out) != k) { e = DB_FAIL(DB_ERR_IO, "snapshot: write failed"); break; }
+  }
+  if (!e && ferror(in)) e = DB_FAIL(DB_ERR_IO, "snapshot: read failed");
+  fclose(in);
+  fclose(out);
+  if (e != DB_OK) { remove(path); return e; }
+
+  *out_tmp = dbe_strdup(path);
+  if (!*out_tmp) { remove(path); return DB_FAIL(DB_ERR_OOM, "snapshot path"); }
+  return DB_OK;
 }
 
 /* Ensure r->values has room for one more row; grows the backing array geometrically. */
@@ -70,6 +105,8 @@ const char *db_result_value(const db_result *r, int row, int col) {
 /* ---- connection accessors ---- */
 db_engine_kind db_conn_kind(const db_conn *c) { return c->kind; }
 const char    *db_conn_path(const db_conn *c) { return c->path; }
+bool           db_conn_read_only(const db_conn *c) { return c->read_only; }
+bool           db_conn_is_snapshot(const db_conn *c) { return c->snapshot; }
 
 void db_close(db_conn *c) {
   if (!c) return;
@@ -77,6 +114,7 @@ void db_close(db_conn *c) {
     case DB_ENGINE_SQLITE: dbe_sqlite_close(c); break;
     case DB_ENGINE_DUCKDB: dbe_duckdb_close(c); break;
   }
+  if (c->temp_copy) { remove(c->temp_copy); free(c->temp_copy); }
   free(c->path);
   free(c);
 }

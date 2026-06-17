@@ -51,11 +51,17 @@ export async function dbInvoke<T = unknown>(
 }
 
 // Convenience helpers for the Phase 0 methods.
+export interface ConnInfo {
+  path: string | null
+  read_only?: boolean
+  snapshot?: boolean
+  engine?: 'duckdb' | 'sqlite'
+}
+
 export const api = {
-  current: () => dbInvoke<{ path: string | null }>('app.current'),
-  open: (path: string) => dbInvoke<{ path: string }>('app.open', { path }),
-  newMemory: (engine: 'duckdb' | 'sqlite') =>
-    dbInvoke<{ path: string }>('app.new_memory', { engine }),
+  current: () => dbInvoke<ConnInfo>('app.current'),
+  open: (path: string) => dbInvoke<ConnInfo>('app.open', { path }),
+  newMemory: (engine: 'duckdb' | 'sqlite') => dbInvoke<ConnInfo>('app.new_memory', { engine }),
   tables: () => dbInvoke<ResultSet>('schema.tables'),
   query: (sql: string) => dbInvoke<ResultSet>('query.run', { sql }),
 }

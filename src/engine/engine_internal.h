@@ -13,14 +13,20 @@
 
 struct db_conn {
   db_engine_kind kind;
-  char          *path;   /* "" for in-memory */
-  void          *h1;     /* SQLITE: sqlite3*       DUCKDB: duckdb_database  */
-  void          *h2;     /* DUCKDB: duckdb_connection (unused for SQLITE)   */
+  char          *path;       /* "" for in-memory */
+  bool           read_only;  /* opened (or fell back to) read-only */
+  bool           snapshot;   /* opened from a temp copy because the original was locked */
+  char          *temp_copy;  /* temp snapshot path to unlink on close, or NULL */
+  void          *h1;         /* SQLITE: sqlite3*       DUCKDB: duckdb_database  */
+  void          *h2;         /* DUCKDB: duckdb_connection (unused for SQLITE)   */
 };
 
 /* ---- shared helpers (engine.c) ---- */
 char      *dbe_strdup(const char *s);                 /* dup; "" for NULL; NULL on OOM */
 db_conn   *dbe_conn_alloc(db_engine_kind kind, const char *path);  /* NULL on OOM */
+/* Copy `src` to a fresh temp file (same extension) so a locked database can be viewed.
+ * On success *out_tmp is a malloc'd path the caller stores in db_conn.temp_copy. */
+db_err     dbe_snapshot_copy(const char *src, char **out_tmp) DB_MUST_CHECK;
 db_result *dbe_result_alloc(int n_cols);              /* r + zeroed cols[]; NULL on OOM */
 db_err     dbe_result_ensure_row(db_result *r, size_t *cap);  /* room for one more row */
 
