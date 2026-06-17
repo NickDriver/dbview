@@ -38,6 +38,12 @@ export function ConvertPanel({
   const [srcTable, setSrcTable] = useState('')
   const [dstTable, setDstTable] = useState('')
 
+  // COPY TO writes a single FILE, so if the user gives a directory (trailing slash) append
+  // "<table>.<ext>" for convenience.
+  function filePath(p: string, ext: string) {
+    return p.endsWith('/') ? `${p}${table || 'export'}.${ext}` : p
+  }
+
   async function generate() {
     setErr(null)
     try {
@@ -47,10 +53,10 @@ export function ConvertPanel({
           res = await api.convert.importCsv(table, path)
           break
         case 'export_parquet':
-          res = await api.convert.exportParquet(table, path)
+          res = await api.convert.exportParquet(table, filePath(path, 'parquet'))
           break
         case 'export_csv':
-          res = await api.convert.exportCsv(table, path)
+          res = await api.convert.exportCsv(table, filePath(path, 'csv'))
           break
         case 'attach_sqlite':
           res = await api.convert.attachSqlite(path, alias)
