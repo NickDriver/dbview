@@ -56,6 +56,7 @@ export function App() {
   const [notice, setNotice] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [showConvert, setShowConvert] = useState(false)
+  const [openMenu, setOpenMenu] = useState<'import' | 'export' | null>(null)
   const [autoFormat, setAutoFormat] = useState<boolean>(() => load('dbview-autoformat', false))
   const [theme, setTheme] = useState<Theme>(() => load<Theme>('dbview-theme', 'system'))
   const [history, setHistory] = useState<HistItem[]>(() => load<HistItem[]>('dbview-history', []))
@@ -376,6 +377,50 @@ export function App() {
     }
   }
 
+  // ---- Import: pick a file, auto-create a table named from the file, preview it ----
+  function tableNameFromPath(p: string): string {
+    const file = p.split('/').pop() || 'import'
+    const base = file.replace(/\.[^.]+$/, '').replace(/[^A-Za-z0-9_]/g, '_')
+    const safe = /^[A-Za-z_]/.test(base) ? base : `t_${base}`
+    if (!tables.includes(safe)) return safe
+    let i = 2
+    while (tables.includes(`${safe}_${i}`)) i++
+    return `${safe}_${i}`
+  }
+
+  async function importFile(fmt: 'csv' | 'parquet') {
+    setOpenMenu(null)
+    if (engine !== 'duckdb') {
+      setError('Import needs a DuckDB connection — click “＋ DuckDB” first.')
+      return
+    }
+    setError(null)
+    setNotice(null)
+    try {
+      const r = await api.pickOpen()
+      if (!r.path) return
+      const tbl = tableNameFromPath(r.path)
+      const built =
+        fmt === 'csv'
+          ? await api.convert.importCsv(tbl, r.path)
+          : await api.convert.importParquet(tbl, r.path)
+      await api.query(built.sql) // run the generated CREATE TABLE
+      await refreshSchema()
+      const preview = `SELECT * FROM "${tbl}" LIMIT 100;`
+      setSql(preview)
+      await runQuery(preview)
+      setNotice(`Imported ${fmt.toUpperCase()} → table "${tbl}"`)
+    } catch (e) {
+      reportError(e)
+    }
+  }
+
+  function exportResult(fmt: 'csv' | 'parquet') {
+    setOpenMenu(null)
+    if (fmt === 'csv') void exportResultCsv()
+    else void exportResultParquet()
+  }
+
   return (
     <div className="app">
       <header className="topbar">
@@ -471,7 +516,6 @@ export function App() {
         <main className="main">
           {showConvert && (
             <ConvertPanel
-              tables={tables}
               isDuckDB={engine === 'duckdb'}
               onClose={() => setShowConvert(false)}
               onNeedDuckDB={() => newMemory('duckdb')}
@@ -494,8 +538,37 @@ export function App() {
             <button onClick={() => runQuery()} disabled={busy}>
               Run ▸ <span className="hint">⌘⏎</span>
             </button>
-            <button onClick={() => setShowConvert((v) => !v)} title="Convert data (CSV / SQLite / DuckDB / Parquet)">
-              Convert ▾
+
+            <span className="dropdown">
+              <button onClick={() => setOpenMenu((m) => (m === 'import' ? null : 'import'))} disabled={busy} title="Import a file as a new table">
+                Import ▾
+              </button>
+              {openMenu === 'import' && (
+                <span className="menu">
+                  <button onClick={() => importFile('csv')}>CSV…</button>
+                  <button onClick={() => importFile('parquet')}>Parquet…</button>
+                </span>
+              )}
+            </span>
+
+            <span className="dropdown">
+              <button
+                onClick={() => setOpenMenu((m) => (m === 'export' ? null : 'export'))}
+                disabled={busy || !result || result.row_count === 0}
+                title="Export the current result to a file"
+              >
+                Export ▾
+              </button>
+              {openMenu === 'export' && (
+                <span className="menu">
+                  <button onClick={() => exportResult('csv')}>CSV…</button>
+                  {engine === 'duckdb' && <button onClick={() => exportResult('parquet')}>Parquet…</button>}
+                </span>
+              )}
+            </span>
+
+            <button onClick={() => setShowConvert((v) => !v)} title="Attach a SQLite database or copy a table">
+              Attach/Copy ▾
             </button>
             <label className="autofmt" title="Format the query each time you run it">
               <input type="checkbox" checked={autoFormat} onChange={(e) => setAutoFormat(e.target.checked)} />
@@ -510,13 +583,10 @@ export function App() {
             {result && result.row_count > 0 && (
               <span className="result-actions">
                 <button onClick={copyResult} title="Copy result as TSV (paste into a spreadsheet)">Copy</button>
-                <button onClick={exportResultCsv} title="Save the result as a CSV file">Export CSV</button>
-                {engine === 'duckdb' && (
-                  <button onClick={exportResultParquet} title="Save the result as a Parquet file">Export Parquet</button>
-                )}
               </span>
             )}
           </div>
+          {openMenu && <div className="menu-backdrop" onClick={() => setOpenMenu(null)} />}
 
           {error && <div className="error">{error}</div>}
           {notice && <div className="notice">{notice}</div>}

@@ -112,6 +112,20 @@ button:disabled { opacity: 0.5; cursor: default; }
   font-size: 12px;
 }
 .autofmt { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); cursor: pointer; }
+
+/* Toolbar dropdown menus (Import/Export) */
+.dropdown { position: relative; display: inline-flex; }
+.menu {
+  position: absolute; top: 100%; left: 0; margin-top: 4px; z-index: 20;
+  display: flex; flex-direction: column; min-width: 120px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12); overflow: hidden;
+}
+.menu button {
+  border: none; border-radius: 0; text-align: left; background: var(--surface);
+}
+.menu button:hover { background: var(--grid-head); color: var(--accent); }
+.menu-backdrop { position: fixed; inset: 0; z-index: 10; }
 .result-actions { margin-left: auto; display: inline-flex; gap: 6px; }
 .result-actions button { font-size: 12px; padding: 3px 9px; }
 
