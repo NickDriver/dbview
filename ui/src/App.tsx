@@ -45,7 +45,6 @@ export function App() {
   const [readOnly, setReadOnly] = useState(false)
   const [snapshot, setSnapshot] = useState(false)
   const [engine, setEngine] = useState<'duckdb' | 'sqlite' | null>(null)
-  const [openInput, setOpenInput] = useState('')
   const [tables, setTables] = useState<string[]>([])
   const [columns, setColumns] = useState<EditorSchema>({})
   const [sql, setSql] = useState<string>(() => load('dbview-sql', 'SELECT 1 AS hello;'))
@@ -56,7 +55,7 @@ export function App() {
   const [notice, setNotice] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [showConvert, setShowConvert] = useState(false)
-  const [openMenu, setOpenMenu] = useState<'import' | 'export' | null>(null)
+  const [openMenu, setOpenMenu] = useState<'import' | 'export' | 'newdb' | null>(null)
   const [autoFormat, setAutoFormat] = useState<boolean>(() => load('dbview-autoformat', false))
   const [theme, setTheme] = useState<Theme>(() => load<Theme>('dbview-theme', 'system'))
   const [history, setHistory] = useState<HistItem[]>(() => load<HistItem[]>('dbview-history', []))
@@ -150,31 +149,40 @@ export function App() {
     })
   }
 
-  async function openPath(p: string) {
+  async function openPath(p: string, engine?: 'duckdb' | 'sqlite') {
     await withBusy(async () => {
-      applyConn(await api.open(p))
+      applyConn(await api.open(p, engine))
       setResult(null)
       await refreshSchema()
     })
   }
 
-  async function openDb() {
-    if (!openInput.trim()) return
-    await openPath(openInput.trim())
-  }
-
-  async function browseOpen() {
+  // Open: native file picker -> open the chosen database.
+  async function openViaDialog() {
     try {
       const r = await api.pickOpen()
-      if (r.path) {
-        setOpenInput(r.path)
-        await openPath(r.path)
-      }
+      if (r.path) await openPath(r.path)
     } catch (e) {
       reportError(e)
     }
   }
 
+  // New DB: pick a format, then a Save location -> create & open a real on-disk database.
+  async function newDatabase(eng: 'duckdb' | 'sqlite') {
+    setOpenMenu(null)
+    try {
+      const ext = eng === 'duckdb' ? 'duckdb' : 'sqlite'
+      const r = await api.pickSave(`database.${ext}`)
+      if (!r.path) return
+      const path = r.path.toLowerCase().endsWith(`.${ext}`) ? r.path : `${r.path}.${ext}`
+      await openPath(path, eng)
+      setNotice(`Created ${eng} database → ${path}`)
+    } catch (e) {
+      reportError(e)
+    }
+  }
+
+  // Quick in-memory DuckDB — used by the Attach/Copy panel's nudge.
   async function newMemory(kind: 'duckdb' | 'sqlite') {
     await withBusy(async () => {
       applyConn(await api.newMemory(kind))
@@ -391,7 +399,7 @@ export function App() {
   async function importFile(fmt: 'csv' | 'parquet') {
     setOpenMenu(null)
     if (engine !== 'duckdb') {
-      setError('Import needs a DuckDB connection — click “＋ DuckDB” first.')
+      setError('Import needs a DuckDB connection — use “New DB ▾ → DuckDB” (or open a .duckdb file) first.')
       return
     }
     setError(null)
@@ -436,24 +444,20 @@ export function App() {
           </span>
         )}
         <span className="open-row">
-          <input
-            value={openInput}
-            onChange={(e) => setOpenInput(e.target.value)}
-            placeholder="/path/to/file.sqlite or .duckdb"
-            onKeyDown={(e) => e.key === 'Enter' && openDb()}
-          />
-          <button onClick={browseOpen} disabled={busy} title="Browse for a database file">
-            Browse…
+          <button onClick={openViaDialog} disabled={busy} title="Open a database file">
+            Open…
           </button>
-          <button onClick={openDb} disabled={busy}>
-            Open
-          </button>
-          <button onClick={() => newMemory('duckdb')} disabled={busy} title="New in-memory DuckDB">
-            ＋ DuckDB
-          </button>
-          <button onClick={() => newMemory('sqlite')} disabled={busy} title="New in-memory SQLite">
-            ＋ SQLite
-          </button>
+          <span className="dropdown">
+            <button onClick={() => setOpenMenu((m) => (m === 'newdb' ? null : 'newdb'))} disabled={busy} title="Create a new database">
+              New DB ▾
+            </button>
+            {openMenu === 'newdb' && (
+              <span className="menu menu-right">
+                <button onClick={() => newDatabase('duckdb')}>DuckDB…</button>
+                <button onClick={() => newDatabase('sqlite')}>SQLite…</button>
+              </span>
+            )}
+          </span>
           <select
             className="theme-select"
             value={theme}

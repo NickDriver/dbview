@@ -60,7 +60,8 @@ export interface ConnInfo {
 
 export const api = {
   current: () => dbInvoke<ConnInfo>('app.current'),
-  open: (path: string) => dbInvoke<ConnInfo>('app.open', { path }),
+  open: (path: string, engine?: 'duckdb' | 'sqlite') =>
+    dbInvoke<ConnInfo>('app.open', engine ? { path, engine } : { path }),
   newMemory: (engine: 'duckdb' | 'sqlite') => dbInvoke<ConnInfo>('app.new_memory', { engine }),
   pickOpen: () => dbInvoke<{ path: string | null }>('app.pick_open'),
   pickSave: (defaultName?: string) =>

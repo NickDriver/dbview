@@ -125,6 +125,7 @@ button:disabled { opacity: 0.5; cursor: default; }
   border: none; border-radius: 0; text-align: left; background: var(--surface);
 }
 .menu button:hover { background: var(--grid-head); color: var(--accent); }
+.menu-right { left: auto; right: 0; }
 .menu-backdrop { position: fixed; inset: 0; z-index: 10; }
 .result-actions { margin-left: auto; display: inline-flex; gap: 6px; }
 .result-actions button { font-size: 12px; padding: 3px 9px; }

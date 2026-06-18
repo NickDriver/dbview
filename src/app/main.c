@@ -73,12 +73,14 @@ static bool has_suffix(const char *s, const char *suf) {
   return ls >= lf && strcmp(s + ls - lf, suf) == 0;
 }
 
-/* Open `path`, replace the active connection, update title. */
-static db_err open_db(struct app_ctx *c, const char *path) {
+/* Open `path`, replace the active connection, update title. `engine` ("duckdb"/"sqlite")
+ * forces the backend; when NULL/empty it's inferred from the file extension. */
+static db_err open_db(struct app_ctx *c, const char *path, const char *engine) {
+  bool duck = (engine && engine[0])
+                  ? !strcmp(engine, "duckdb")
+                  : (has_suffix(path, ".duckdb") || has_suffix(path, ".ddb"));
   db_conn *nc = NULL;
-  db_err e = (has_suffix(path, ".duckdb") || has_suffix(path, ".ddb"))
-                 ? db_open_duckdb(path, &nc)
-                 : db_open_sqlite(path, &nc);
+  db_err e = duck ? db_open_duckdb(path, &nc) : db_open_sqlite(path, &nc);
   if (e != DB_OK) return e;
   if (c->conn) db_close(c->conn);
   c->conn = nc;
@@ -120,7 +122,7 @@ static char *shell_dispatch(struct app_ctx *c, const char *method, const char *a
     const char *path = sget(a, "path");
     if (!path || !path[0]) out = json_err(DB_ERR_INVALID_ARG, "path required");
     else {
-      db_err e = open_db(c, path);
+      db_err e = open_db(c, path, sget(a, "engine"));
       out = (e != DB_OK) ? json_err(e, db_last_error()->message) : current_json(c);
     }
 
@@ -220,7 +222,7 @@ int main(int argc, char **argv) {
 #endif
 
   if (argc > 1) {
-    if (open_db(&c, argv[1]) != DB_OK)
+    if (open_db(&c, argv[1], NULL) != DB_OK)
       fprintf(stderr, "failed to open '%s': %s\n", argv[1], db_last_error()->message);
   }
 
