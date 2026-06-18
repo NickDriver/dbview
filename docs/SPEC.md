@@ -4,8 +4,8 @@
 > DuckDB**, and **prepare data for Databricks**. Native WebKit shell + React/TS UI over a C23
 > engine. macOS (Apple Silicon) first → Linux → Windows.
 >
-> Status: draft for review. Decisions trace back to `DESIGN_QUESTIONNAIRE.md`. Dual-audience
-> (human + AI agent): rule first, then reason.
+> Status: Phases 0–2 implemented (see §10 and `ROADMAP.md`). Decisions trace back to
+> `DESIGN_QUESTIONNAIRE.md`. Dual-audience (human + AI agent): rule first, then reason.
 
 ---
 
@@ -235,16 +235,25 @@ added later that reuses `db_api_dispatch` verbatim — no engine changes. No AI 
 
 | Phase | Deliverable | Tests added |
 |---|---|---|
-| **0 — skeleton** | CMake + C23 engine stub, `db_error`/`db_test`, webview vendored, React/TS shell, `dbInvoke` bridge; open a SQLite file & list tables. | error/test harness self-test; open+list tables (in-memory). |
-| **1 — workbench** | DuckDB engine; Monaco editor + result grid + schema sidebar + query history. | query run/timing; result JSON shape; error mapping; history. |
-| **2 — convert** | CSV import; SQLite⇄DuckDB; wizard generates editable SQL. | round-trip CSV→SQLite→DuckDB; all-or-nothing on failure; type inference. |
-| **3 — Databricks prep** | Parquet export + type controls. | Parquet round-trip (export→re-read) rows/types/values. |
-| **4 — polish/packaging** | macOS `.app`; (later) MCP server, Databricks Volume push, server connections, cell editing. | per-feature as added. |
+| **0 — skeleton** ✅ | CMake + C23 engine, `db_error`/`db_test`, webview, React/TS shell, `dbInvoke` bridge; open a SQLite file & list tables. | error/test harness; open+list tables. |
+| **1 — workbench** ✅ | SQLite + DuckDB engines; CodeMirror editor (table+column autocomplete) + sortable result grid + schema sidebar + query history. | query run; result JSON shape; error mapping; list tables/columns; read-only/snapshot fallback. |
+| **2 — convert** ✅ | CSV/Parquet import; Parquet/CSV export; SQLite⇄DuckDB attach/copy; conversions are generated DuckDB SQL. | round-trips CSV→table→Parquet and SQLite ATTACH→copy; SQL-builder quoting; export mkdir. |
+| **3 — Databricks prep** ▶ | Parquet export done ✅; remaining: type controls, push to a Databricks Volume (REST). | Parquet round-trip (export→re-read). |
+| **4 — polish/packaging** | macOS `.app`; (later) MCP server, server connections, cell editing. | per-feature as added. |
+
+**Beyond the phase table (also shipped):** native Open/Save dialogs; **New DB** creates an on-disk
+SQLite/DuckDB file; unified **Import ▾ / Export ▾** buttons; native Edit menu (⌘C/V/X/A/Z) +
+clipboard; SQL formatting; light/dark/system theme; persistence of editor SQL, prefs, and
+last-opened DB. Engine test count: **38 green** under ASan+UBSan. Editor is **CodeMirror 6**, not
+Monaco (Monaco's worker/CDN model breaks single-file `file://` loading; CodeMirror bundles cleanly).
 
 ---
 
 ## 11. Open items to revisit
-- DuckDB acquisition (prebuilt lib vs build-from-source) for reproducible CI — decide in Phase 1.
-- SQLite amalgamation vendoring before first distributable.
+- DuckDB acquisition: **decided** — vendor the prebuilt `libduckdb` (dylib) via
+  `scripts/fetch_duckdb.sh`, pinned to v1.5.4; static link is a release task.
+- SQLite amalgamation vendoring before first distributable (currently system `libsqlite3`).
 - Linux/Windows packaging formats (AppImage/.deb, MSI/portable) — decide at Phase 4.
+- Windows: `__attribute__((constructor))` test registration + `SIG*` crash handler need a
+  linker-section/SEH shim (clang/gcc + POSIX today).
 - Whether to add Vitest/RTL once the UI stabilizes (Q11 deferred).

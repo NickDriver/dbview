@@ -41,13 +41,20 @@ of a phase. Each phase also ships a **minimal visible UI slice** so progress is 
 - `workspaceFetch`-style: UI never calls the engine except through the typed `dbInvoke<T>()` wrapper.
 - Build: CMake. `ctest` (ASan+UBSan in Debug), plus `leaks` / `analyze` / `deadcode` targets.
 
-## Build / run (filled in as Phase 0 lands)
-- `scripts/fetch_webview.sh` — vendor the webview library once.
-- `scripts/fetch_duckdb.sh` — vendor the DuckDB C library once (~109M, gitignored).
-- `cmake -B build && cmake --build build` — engine + app.
-- `ctest --test-dir build` — run tests.
-- `cd ui && npm install && npm run build` — build the UI bundle.
-- `DBVIEW_UI_URL=http://localhost:5173 ./build/dbview` — dev against the Vite server.
+## Build / run
+- `scripts/fetch_webview.sh` + `scripts/fetch_duckdb.sh` — vendor native deps once (gitignored).
+- `cmake -S . -B build` then `cmake --build build --target dbview` — builds the UI, then the app.
+- `cmake --build build --target test_runner && ctest --test-dir build` — run tests.
+- `./build/dbview [path/to/file.sqlite|.duckdb]` — run; `DBVIEW_UI_URL=http://localhost:5173` for
+  the Vite dev server.
+- Targets: `dbview` (app), `dbview_engine` (lib), `test_runner`, `leaks`, `analyze`. Native macOS
+  bits (file dialogs, Edit menu, clipboard) live in `src/app/file_dialog.m` → `dbview_macos`.
+
+## Current surface (Phases 0–2 + extras; see ROADMAP.md)
+- Engines: SQLite + DuckDB via one `db_conn`/`db_result`; open RW → RO → snapshot-copy fallback.
+- UI: Open… / New DB ▾ / Import ▾ / Export ▾ / Attach-Copy panel; CodeMirror editor w/ table+column
+  autocomplete, format, copy, clear; sortable grid; history; theme; native Edit menu + clipboard.
+- Conversions = generated DuckDB SQL (`src/convert/`). Editor is CodeMirror 6, not Monaco.
 
 ## Git
 New, standalone repo (not related to kompot). Conventional commits. No AI/Claude mentions in
