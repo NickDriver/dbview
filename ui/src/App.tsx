@@ -48,12 +48,15 @@ export function App() {
   const [openInput, setOpenInput] = useState('')
   const [tables, setTables] = useState<string[]>([])
   const [columns, setColumns] = useState<EditorSchema>({})
-  const [sql, setSql] = useState('SELECT 1 AS hello;')
+  const [sql, setSql] = useState<string>(() => load('dbview-sql', 'SELECT 1 AS hello;'))
+  const [lastSql, setLastSql] = useState('') // the SQL that produced the current result
   const [result, setResult] = useState<ResultSet | null>(null)
   const [sort, setSort] = useState<Sort>(null)
   const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [showConvert, setShowConvert] = useState(false)
+  const [autoFormat, setAutoFormat] = useState<boolean>(() => load('dbview-autoformat', false))
   const [theme, setTheme] = useState<Theme>(() => load<Theme>('dbview-theme', 'system'))
   const [history, setHistory] = useState<HistItem[]>(() => load<HistItem[]>('dbview-history', []))
 
@@ -67,6 +70,14 @@ export function App() {
   useEffect(() => {
     save('dbview-history', history)
   }, [history])
+
+  useEffect(() => {
+    save('dbview-sql', sql)
+  }, [sql])
+
+  useEffect(() => {
+    save('dbview-autoformat', autoFormat)
+  }, [autoFormat])
 
   const refreshSchema = useCallback(async () => {
     try {
@@ -98,14 +109,30 @@ export function App() {
     setReadOnly(!!c.read_only)
     setSnapshot(!!c.snapshot)
     setEngine(c.engine ?? null)
+    if (c.path) save('dbview-last-path', c.path) // remember for next launch
   }
 
   useEffect(() => {
     api
       .current()
-      .then((c) => {
+      .then(async (c) => {
+        if (c.path) {
+          applyConn(c)
+          await refreshSchema()
+          return
+        }
+        // launched without a DB: try to reopen the last one (best-effort)
+        const last = load<string>('dbview-last-path', '')
+        if (last) {
+          try {
+            applyConn(await api.open(last))
+            await refreshSchema()
+            return
+          } catch {
+            /* file moved/locked — fall back to the launcher */
+          }
+        }
         applyConn(c)
-        if (c.path) refreshSchema()
       })
       .catch(reportError)
   }, [refreshSchema])
@@ -169,13 +196,27 @@ export function App() {
 
   const runQuery = useCallback(
     async (q?: string) => {
-      const text = (q ?? sql).trim()
+      let text = (q ?? sql).trim()
       if (!text) return
+      // optional tidy-on-run
+      if (autoFormat) {
+        try {
+          text = formatSql(text, {
+            language: engine === 'duckdb' ? 'postgresql' : 'sqlite',
+            keywordCase: 'upper',
+          }).trim()
+          setSql(text)
+        } catch {
+          /* keep original text if it can't be formatted */
+        }
+      }
       setBusy(true)
       setError(null)
+      setNotice(null)
       try {
         const r = await api.query(text)
         setResult(r)
+        setLastSql(text)
         setSort(null)
         pushHistory(text, true, r.row_count)
         // DDL changes the schema -> refresh the Tables sidebar + editor autocompletion.
@@ -188,7 +229,7 @@ export function App() {
         setBusy(false)
       }
     },
-    [sql, refreshSchema],
+    [sql, autoFormat, engine, refreshSchema],
   )
 
   // Global ⌘⏎ / Ctrl+⏎ to run regardless of focus.
@@ -279,6 +320,61 @@ export function App() {
       return x.localeCompare(y) * mul
     })
   }, [result, sort])
+
+  // Serialize the current (sorted) result. quote=true → RFC-style CSV; quote=false → TSV
+  // (tabs/newlines flattened to spaces) for clean paste into spreadsheets.
+  function serializeResult(delim: string, quote: boolean): string {
+    if (!result) return ''
+    const esc = (v: string | null) => {
+      const s = v ?? ''
+      if (!quote) return s.replace(/[\t\n\r]+/g, ' ')
+      return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s
+    }
+    const header = result.columns.map((c) => esc(c.name)).join(delim)
+    const body = sortedRows.map((row) => row.map(esc).join(delim))
+    return [header, ...body].join('\n')
+  }
+
+  async function copyResult() {
+    if (!result) return
+    const tsv = serializeResult('\t', false)
+    try {
+      await api.clipboardWrite(tsv)
+    } catch {
+      try {
+        await navigator.clipboard?.writeText(tsv)
+      } catch {
+        /* clipboard unavailable */
+      }
+    }
+    setNotice(`Copied ${result.row_count} row${result.row_count === 1 ? '' : 's'} (TSV)`)
+  }
+
+  async function exportResultCsv() {
+    if (!result) return
+    try {
+      const r = await api.pickSave('result.csv')
+      if (!r.path) return
+      await api.writeFile(r.path, serializeResult(',', true))
+      setNotice(`Saved CSV → ${r.path}`)
+    } catch (e) {
+      reportError(e)
+    }
+  }
+
+  async function exportResultParquet() {
+    if (!result || !lastSql) return
+    try {
+      const r = await api.pickSave('result.parquet')
+      if (!r.path) return
+      const inner = lastSql.replace(/;\s*$/, '')
+      const escaped = r.path.replace(/'/g, "''")
+      await api.query(`COPY (${inner}) TO '${escaped}' (FORMAT parquet);`)
+      setNotice(`Saved Parquet → ${r.path}`)
+    } catch (e) {
+      reportError(e)
+    }
+  }
 
   return (
     <div className="app">
@@ -400,15 +496,29 @@ export function App() {
             <button onClick={() => setShowConvert((v) => !v)} title="Convert data (CSV / SQLite / DuckDB / Parquet)">
               Convert ▾
             </button>
+            <label className="autofmt" title="Format the query each time you run it">
+              <input type="checkbox" checked={autoFormat} onChange={(e) => setAutoFormat(e.target.checked)} />
+              Auto-format
+            </label>
             {result && (
               <span className="muted">
                 {result.row_count} row{result.row_count === 1 ? '' : 's'}
                 {result.truncated ? ' (truncated)' : ''}
               </span>
             )}
+            {result && result.row_count > 0 && (
+              <span className="result-actions">
+                <button onClick={copyResult} title="Copy result as TSV (paste into a spreadsheet)">Copy</button>
+                <button onClick={exportResultCsv} title="Save the result as a CSV file">Export CSV</button>
+                {engine === 'duckdb' && (
+                  <button onClick={exportResultParquet} title="Save the result as a Parquet file">Export Parquet</button>
+                )}
+              </span>
+            )}
           </div>
 
           {error && <div className="error">{error}</div>}
+          {notice && <div className="notice">{notice}</div>}
 
           {result && (
             <div className="grid-wrap">

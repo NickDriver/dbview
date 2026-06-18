@@ -106,6 +106,14 @@ button:disabled { opacity: 0.5; cursor: default; }
   padding: 8px 10px; border-radius: 6px; white-space: pre-wrap;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
+.notice {
+  background: var(--grid-head); color: var(--muted);
+  padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border);
+  font-size: 12px;
+}
+.autofmt { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); cursor: pointer; }
+.result-actions { margin-left: auto; display: inline-flex; gap: 6px; }
+.result-actions button { font-size: 12px; padding: 3px 9px; }
 
 .grid-wrap { flex: 1; overflow: auto; border: 1px solid var(--border); border-radius: 6px; }
 .grid { border-collapse: collapse; width: 100%; }

@@ -11,6 +11,7 @@
  *
  * Built only by the `app` CMake target (needs the webview header + WebKit/Cocoa).
  */
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -126,6 +127,24 @@ static char *shell_dispatch(struct app_ctx *c, const char *method, const char *a
   } else if (!strcmp(method, "app.new_memory")) {
     db_err e = open_memory(c, sget(a, "engine"));
     out = (e != DB_OK) ? json_err(e, db_last_error()->message) : current_json(c);
+
+  } else if (!strcmp(method, "app.write_file")) {
+    const char *path = sget(a, "path");
+    const char *text = sget(a, "text");
+    if (!path || !path[0]) {
+      out = json_err(DB_ERR_INVALID_ARG, "path required");
+    } else {
+      FILE *f = fopen(path, "wb");
+      if (!f) {
+        out = json_err(DB_ERR_IO, strerror(errno));
+      } else {
+        size_t len = text ? strlen(text) : 0;
+        size_t w = fwrite(text ? text : "", 1, len, f);
+        fclose(f);
+        if (w != len) out = json_err(DB_ERR_IO, "short write");
+        else { cJSON *o = cJSON_CreateObject(); cJSON_AddBoolToObject(o, "ok", 1); out = json_take(o); }
+      }
+    }
 
   } else if (!strcmp(method, "app.clipboard_write")) {
 #ifdef DBVIEW_MACOS
