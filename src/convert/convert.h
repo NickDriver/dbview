@@ -18,6 +18,9 @@
 /* CSV file -> new table:  CREATE TABLE "t" AS SELECT * FROM read_csv_auto('path'); */
 db_err db_sql_import_csv(const char *table, const char *csv_path, char **out_sql) DB_MUST_CHECK;
 
+/* Parquet file -> new table:  CREATE TABLE "t" AS SELECT * FROM read_parquet('path'); */
+db_err db_sql_import_parquet(const char *table, const char *parquet_path, char **out_sql) DB_MUST_CHECK;
+
 /* table -> Parquet file:  COPY (SELECT * FROM "t") TO 'path' (FORMAT parquet); */
 db_err db_sql_export_parquet(const char *table, const char *out_path, char **out_sql) DB_MUST_CHECK;
 

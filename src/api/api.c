@@ -127,6 +127,8 @@ db_err db_api_dispatch(db_conn *c, const char *method, const char *args_json,
     const char *xpath = sget(args, "path");
     if (!strcmp(m, "import_csv"))
       e = db_sql_import_csv(sget(args, "table"), xpath, &sql);
+    else if (!strcmp(m, "import_parquet"))
+      e = db_sql_import_parquet(sget(args, "table"), xpath, &sql);
     else if (!strcmp(m, "export_parquet")) {
       e = (xpath && xpath[0]) ? ensure_parent_dir(xpath) : DB_OK;   /* create dest folder */
       if (e == DB_OK) e = db_sql_export_parquet(sget(args, "table"), xpath, &sql);

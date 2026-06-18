@@ -488,6 +488,7 @@ export function App() {
             schema={schema}
             onFormat={formatQuery}
             onCopy={copyQuery}
+            onClear={() => setSql('')}
           />
           <div className="toolbar">
             <button onClick={() => runQuery()} disabled={busy}>

@@ -50,6 +50,7 @@ export function SqlEditor({
   schema,
   onCopy,
   onFormat,
+  onClear,
 }: {
   value: string
   onChange: (v: string) => void
@@ -57,6 +58,7 @@ export function SqlEditor({
   schema?: EditorSchema
   onCopy?: () => void
   onFormat?: () => void
+  onClear?: () => void
 }) {
   const extensions = useMemo(
     () => [
@@ -83,6 +85,11 @@ export function SqlEditor({
         {onCopy && (
           <button className="editor-tool" onClick={onCopy} title="Copy whole query">
             Copy
+          </button>
+        )}
+        {onClear && (
+          <button className="editor-tool" onClick={onClear} title="Clear the editor">
+            Clear
           </button>
         )}
       </div>

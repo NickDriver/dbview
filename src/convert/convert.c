@@ -53,6 +53,19 @@ db_err db_sql_import_csv(const char *table, const char *csv_path, char **out_sql
   return DB_OK;
 }
 
+db_err db_sql_import_parquet(const char *table, const char *parquet_path, char **out_sql) {
+  if (!out_sql) return DB_FAIL(DB_ERR_INVALID_ARG, "out_sql is NULL");
+  *out_sql = NULL;
+  if (!table || !table[0] || !parquet_path || !parquet_path[0])
+    return DB_FAIL(DB_ERR_INVALID_ARG, "table and parquet_path are required");
+  char *t = qident(table), *p = qlit(parquet_path);
+  char *sql = (t && p) ? asprintf_dup("CREATE TABLE %s AS SELECT * FROM read_parquet(%s);", t, p) : NULL;
+  free(t); free(p);
+  if (!sql) return DB_FAIL(DB_ERR_OOM, "build sql");
+  *out_sql = sql;
+  return DB_OK;
+}
+
 db_err db_sql_export_parquet(const char *table, const char *out_path, char **out_sql) {
   if (!out_sql) return DB_FAIL(DB_ERR_INVALID_ARG, "out_sql is NULL");
   *out_sql = NULL;
@@ -132,6 +145,13 @@ TEST(convert, import_csv_quotes_special_chars) {
   /* a table name with a quote and a path with a space + apostrophe must be escaped */
   ASSERT_OK(db_sql_import_csv("we\"ird", "/a b/it's.csv", &sql));
   ASSERT_STR_EQ(sql, "CREATE TABLE \"we\"\"ird\" AS SELECT * FROM read_csv_auto('/a b/it''s.csv');");
+  free(sql);
+}
+
+TEST(convert, import_parquet_sql) {
+  char *sql = NULL;
+  ASSERT_OK(db_sql_import_parquet("t", "/tmp/x.parquet", &sql));
+  ASSERT_STR_EQ(sql, "CREATE TABLE \"t\" AS SELECT * FROM read_parquet('/tmp/x.parquet');");
   free(sql);
 }
 

@@ -73,6 +73,8 @@ export const api = {
   convert: {
     importCsv: (table: string, path: string) =>
       dbInvoke<{ sql: string }>('convert.import_csv', { table, path }),
+    importParquet: (table: string, path: string) =>
+      dbInvoke<{ sql: string }>('convert.import_parquet', { table, path }),
     exportParquet: (table: string, path: string) =>
       dbInvoke<{ sql: string }>('convert.export_parquet', { table, path }),
     exportCsv: (table: string, path: string) =>

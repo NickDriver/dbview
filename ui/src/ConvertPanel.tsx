@@ -4,10 +4,17 @@ import { api, DbCallError } from './bridge'
 // Conversion wizard (Phase 2): pick an operation, fill fields, "Generate SQL" -> the SQL is
 // loaded into the editor for review and running. All conversions run on a DuckDB connection.
 
-type Op = 'import_csv' | 'export_parquet' | 'export_csv' | 'attach_sqlite' | 'copy_table'
+type Op =
+  | 'import_csv'
+  | 'import_parquet'
+  | 'export_parquet'
+  | 'export_csv'
+  | 'attach_sqlite'
+  | 'copy_table'
 
 const OPS: { id: Op; label: string }[] = [
   { id: 'import_csv', label: 'Import CSV → table' },
+  { id: 'import_parquet', label: 'Import Parquet → table' },
   { id: 'export_parquet', label: 'Export table → Parquet' },
   { id: 'export_csv', label: 'Export table → CSV' },
   { id: 'attach_sqlite', label: 'Attach SQLite file' },
@@ -65,6 +72,9 @@ export function ConvertPanel({
       switch (op) {
         case 'import_csv':
           res = await api.convert.importCsv(table, path)
+          break
+        case 'import_parquet':
+          res = await api.convert.importParquet(table, path)
           break
         case 'export_parquet':
           res = await api.convert.exportParquet(table, filePath(path, 'parquet'))
@@ -127,6 +137,12 @@ export function ConvertPanel({
         {op === 'import_csv' && (
           <>
             <label>CSV path<span className="field-row"><input value={path} onChange={(e) => setPath(e.target.value)} placeholder="/path/to/data.csv" />{browseBtn(() => browse('open', setPath))}</span></label>
+            <label>New table<input value={table} onChange={(e) => setTable(e.target.value)} placeholder="my_table" /></label>
+          </>
+        )}
+        {op === 'import_parquet' && (
+          <>
+            <label>Parquet path<span className="field-row"><input value={path} onChange={(e) => setPath(e.target.value)} placeholder="/path/to/data.parquet" />{browseBtn(() => browse('open', setPath))}</span></label>
             <label>New table<input value={table} onChange={(e) => setTable(e.target.value)} placeholder="my_table" /></label>
           </>
         )}
