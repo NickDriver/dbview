@@ -105,6 +105,25 @@ db_err db_sql_attach_sqlite(const char *sqlite_path, const char *alias, char **o
   return DB_OK;
 }
 
+db_err db_sql_attach_db(const char *path, const char *alias, int is_sqlite, int read_only,
+                        char **out_sql) {
+  if (!out_sql) return DB_FAIL(DB_ERR_INVALID_ARG, "out_sql is NULL");
+  *out_sql = NULL;
+  if (!path || !path[0] || !alias || !alias[0])
+    return DB_FAIL(DB_ERR_INVALID_ARG, "path and alias are required");
+  char *p = qlit(path), *a = qident(alias);
+  char *sql = NULL;
+  if (p && a) {
+    const char *opts = is_sqlite ? (read_only ? " (TYPE sqlite, READ_ONLY)" : " (TYPE sqlite)")
+                                 : (read_only ? " (READ_ONLY)" : "");
+    sql = asprintf_dup("ATTACH %s AS %s%s;", p, a, opts);
+  }
+  free(p); free(a);
+  if (!sql) return DB_FAIL(DB_ERR_OOM, "build sql");
+  *out_sql = sql;
+  return DB_OK;
+}
+
 db_err db_sql_copy_table(const char *src_schema, const char *src_table,
                          const char *dst_table, char **out_sql) {
   if (!out_sql) return DB_FAIL(DB_ERR_INVALID_ARG, "out_sql is NULL");
@@ -169,6 +188,22 @@ TEST(convert, attach_sqlite_sql) {
   char *sql = NULL;
   ASSERT_OK(db_sql_attach_sqlite("/db/app.sqlite", "src", &sql));
   ASSERT_STR_EQ(sql, "ATTACH '/db/app.sqlite' AS \"src\" (TYPE sqlite, READ_ONLY);");
+  free(sql);
+}
+
+TEST(convert, attach_db_variants_sql) {
+  char *sql = NULL;
+  ASSERT_OK(db_sql_attach_db("/d.sqlite", "src", 1, 1, &sql));
+  ASSERT_STR_EQ(sql, "ATTACH '/d.sqlite' AS \"src\" (TYPE sqlite, READ_ONLY);");
+  free(sql);
+  ASSERT_OK(db_sql_attach_db("/d.sqlite", "dst", 1, 0, &sql));
+  ASSERT_STR_EQ(sql, "ATTACH '/d.sqlite' AS \"dst\" (TYPE sqlite);");
+  free(sql);
+  ASSERT_OK(db_sql_attach_db("/d.duckdb", "src", 0, 1, &sql));
+  ASSERT_STR_EQ(sql, "ATTACH '/d.duckdb' AS \"src\" (READ_ONLY);");
+  free(sql);
+  ASSERT_OK(db_sql_attach_db("/d.duckdb", "dst", 0, 0, &sql));
+  ASSERT_STR_EQ(sql, "ATTACH '/d.duckdb' AS \"dst\";");
   free(sql);
 }
 

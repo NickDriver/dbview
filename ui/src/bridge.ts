@@ -19,6 +19,13 @@ export interface ResultSet {
   truncated: boolean
 }
 
+// Structure of one table: columns (name/type/notnull/pk), indexes (name/unique), row count.
+export interface TableDetail {
+  row_count: number
+  columns: ResultSet
+  indexes: ResultSet
+}
+
 declare global {
   interface Window {
     dbInvoke?: (method: string, argsJson: string) => Promise<unknown>
@@ -70,6 +77,7 @@ export const api = {
   writeFile: (path: string, text: string) => dbInvoke<{ ok: boolean }>('app.write_file', { path, text }),
   tables: () => dbInvoke<ResultSet>('schema.tables'),
   columns: () => dbInvoke<ResultSet>('schema.columns'),
+  tableDetail: (table: string) => dbInvoke<TableDetail>('schema.table_detail', { table }),
   query: (sql: string) => dbInvoke<ResultSet>('query.run', { sql }),
   convert: {
     importCsv: (table: string, path: string) =>
@@ -84,5 +92,17 @@ export const api = {
       dbInvoke<{ sql: string }>('convert.attach_sqlite', { path, alias }),
     copyTable: (src_schema: string, src: string, dst: string) =>
       dbInvoke<{ sql: string }>('convert.copy_table', { src_schema, src, dst }),
+    database: (
+      src: string,
+      src_engine: 'duckdb' | 'sqlite',
+      dst: string,
+      dst_engine: 'duckdb' | 'sqlite',
+    ) =>
+      dbInvoke<{ ok: boolean; dst: string; views_failed: string[] }>('convert.database', {
+        src,
+        src_engine,
+        dst,
+        dst_engine,
+      }),
   },
 }

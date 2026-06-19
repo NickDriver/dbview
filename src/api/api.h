@@ -8,8 +8,9 @@
  * contract the UI (and later an AI) speak.
  *
  * Methods (Phase 0):
- *   "schema.tables"  args: {}              -> result set of (name, type)
- *   "query.run"      args: {"sql": "..."}  -> result set
+ *   "schema.tables"        args: {}                -> result set of (name, type)
+ *   "schema.table_detail"  args: {"table": "..."}  -> {row_count, columns, indexes}
+ *   "query.run"            args: {"sql": "..."}    -> result set
  *
  * `app.*` methods (open file, recent files) are handled at the shell level in main.c.
  */

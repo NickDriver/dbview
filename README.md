@@ -22,10 +22,16 @@ Working app — **Phases 0–2 complete** (skeleton, query workbench, conversion
   still opens). Badges show engine / read-only / snapshot.
 - **Query workbench:** CodeMirror SQL editor with syntax highlighting, table + column
   autocompletion, format (`⌘⇧F`), copy, clear; run with `⌘⏎`; sortable result grid; query history.
+- **Schema explorer:** sidebar tables carry a `T`/`V` mark (table vs view); a **Schema** toggle in
+  the result toolbar shows the selected table's columns, types, nullability, primary key, indexes,
+  and row count.
 - **Open / New DB:** native Open dialog; **New DB** creates a real on-disk SQLite/DuckDB file via a
   Save dialog.
 - **Import / Export:** one-click **Import ▾** (CSV/Parquet → new table) and **Export ▾**
   (result → CSV/Parquet), all via native file dialogs. **Attach/Copy** panel for SQLite⇄DuckDB.
+- **Convert whole database:** **Convert to DuckDB / Convert to SQLite** turns the open database into
+  a new file of the other engine — copies every table and view, both directions, round-trip safe
+  (skips SQLite-internal `sqlite_*` tables).
 - **Databricks prep:** Parquet export (`COPY … (FORMAT parquet)`); destination folders auto-created.
 - **Native niceties:** Edit menu (⌘C/V/X/A/Z), clipboard, light/dark/system theme; editor SQL,
   preferences, and last-opened DB persist across launches.

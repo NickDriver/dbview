@@ -30,6 +30,11 @@ db_err db_sql_export_csv(const char *table, const char *out_path, char **out_sql
 /* attach a SQLite file read-only:  ATTACH 'path' AS "alias" (TYPE sqlite, READ_ONLY); */
 db_err db_sql_attach_sqlite(const char *sqlite_path, const char *alias, char **out_sql) DB_MUST_CHECK;
 
+/* attach any DB with explicit type/mode (used by whole-DB conversion in both directions):
+ *   ATTACH 'path' AS "alias" [(TYPE sqlite[, READ_ONLY] | READ_ONLY)]; */
+db_err db_sql_attach_db(const char *path, const char *alias, int is_sqlite, int read_only,
+                        char **out_sql) DB_MUST_CHECK;
+
 /* copy a (optionally schema-qualified) source table into a new local table:
  *   CREATE TABLE "dst" AS SELECT * FROM "schema"."src";   (schema may be NULL) */
 db_err db_sql_copy_table(const char *src_schema, const char *src_table,

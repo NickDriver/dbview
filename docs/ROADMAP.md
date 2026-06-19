@@ -19,6 +19,9 @@ Status of the build and the backlog. ✅ done · ▶ in progress · ☐ planned.
 ### Phase 2 — conversion ✅
 - **Import ▾** CSV/Parquet → new table; **Export ▾** result → CSV/Parquet (native dialogs).
 - **Attach/Copy** panel: ATTACH a SQLite file, copy a table (DuckDB scanner).
+- **Convert to DuckDB/SQLite…** — turn a whole open DB into a new file of the other engine
+  (copy each base table + recreate views; skips SQLite-internal `sqlite_*` tables) and switch
+  to it; works both directions and round-trips cleanly.
 - Conversions are generated DuckDB SQL; export auto-creates the destination folder.
 
 ### Cross-cutting shipped
@@ -39,9 +42,11 @@ Status of the build and the backlog. ✅ done · ▶ in progress · ☐ planned.
 - ☐ **Databricks Volume upload** — push exported Parquet via REST (host + token). *(Phase 3)*
 
 ### Section D — exploration depth
-- ☐ **Table detail / schema view** — columns, types, row count, indexes; expandable in sidebar.
-- ☐ **Cancel a long-running query**; run-only-selected-text.
-- ☐ **Export a specific table** (not just the current result) from the sidebar.
+- ✅ **Table detail / schema view** — sidebar tables carry a `T`/`V` mark (table vs view);
+  clicking one previews its rows and exposes a **Schema** toggle in the result toolbar that
+  flips the pane to columns/types/nullable/PK + indexes + row count (`schema.table_detail`).
+- ☐ ~~Cancel a long-running query; run-only-selected-text~~ — dropped (not needed).
+- ☐ ~~Export a specific table from the sidebar~~ — deferred (too early).
 
 ### Section E — bigger / later
 - ☐ **Cell editing & write UI** (INSERT/UPDATE/DELETE).

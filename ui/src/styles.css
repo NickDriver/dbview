@@ -137,6 +137,33 @@ button:disabled { opacity: 0.5; cursor: default; }
   padding: 4px 8px; text-align: left; white-space: nowrap;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
+/* Sidebar table/view marks */
+.sidebar .link.tbl { display: inline-flex; align-items: center; gap: 6px; width: 100%; }
+.sidebar .link.tbl.active { font-weight: 600; }
+.tmark {
+  flex: none; display: inline-block; width: 15px; height: 15px; line-height: 14px;
+  text-align: center; font-size: 9px; font-weight: 700; border-radius: 3px;
+  border: 1px solid currentColor;
+}
+.tmark.t { color: var(--accent); }
+.tmark.v { color: #a855f7; }
+.tmark.pk { color: var(--muted); width: auto; padding: 0 4px; }
+
+/* Result-toolbar Schema/Data toggle: group to the right, next to Copy. */
+.schema-toggle { margin-left: auto; font-size: 12px; padding: 3px 9px; }
+.schema-toggle.active { border-color: var(--accent); color: var(--accent); }
+/* When the Schema toggle is present it absorbs the free space, so Copy sits right after it. */
+.schema-toggle + .result-actions { margin-left: 0; }
+
+/* Table structure (Schema) view */
+.schema-view { padding: 0; }
+.schema-head {
+  padding: 6px 8px; font-size: 12px; color: var(--muted);
+  background: var(--grid-head); border-bottom: 1px solid var(--border);
+}
+.schema-view .grid { margin-bottom: 0; }
+.grid td.coltype-cell { color: var(--muted); }
+
 .grid thead th { position: sticky; top: 0; background: var(--grid-head); font-weight: 600; }
 .grid th.sortable { cursor: pointer; user-select: none; }
 .grid th.sortable:hover { color: var(--accent); }

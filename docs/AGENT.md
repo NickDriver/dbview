@@ -52,9 +52,11 @@ of a phase. Each phase also ships a **minimal visible UI slice** so progress is 
 
 ## Current surface (Phases 0–2 + extras; see ROADMAP.md)
 - Engines: SQLite + DuckDB via one `db_conn`/`db_result`; open RW → RO → snapshot-copy fallback.
-- UI: Open… / New DB ▾ / Import ▾ / Export ▾ / Attach-Copy panel; CodeMirror editor w/ table+column
-  autocomplete, format, copy, clear; sortable grid; history; theme; native Edit menu + clipboard.
-- Conversions = generated DuckDB SQL (`src/convert/`). Editor is CodeMirror 6, not Monaco.
+- UI: Open… / New DB ▾ / Import ▾ / Export ▾ / Convert-to-DuckDB|SQLite / Attach-Copy panel;
+  CodeMirror editor w/ table+column autocomplete, format, copy, clear; sortable grid; sidebar with
+  `T`/`V` marks + per-table **Schema** view (`schema.table_detail`); history; theme; Edit menu.
+- Conversions = generated DuckDB SQL (`src/convert/`); whole-DB convert (`convert.database`) copies
+  tables individually + recreates views, skipping `sqlite_*` internal tables. CodeMirror 6, not Monaco.
 
 ## Git
 New, standalone repo (not related to kompot). Conventional commits. No AI/Claude mentions in

@@ -70,6 +70,14 @@ db_err db_list_tables(db_conn *c, db_result **out) DB_MUST_CHECK;
  * column position. Used to drive editor autocompletion. */
 db_err db_list_columns(db_conn *c, db_result **out) DB_MUST_CHECK;
 
+/* ---- single-table detail (drives the sidebar's Schema view) ---- */
+/* Columns of one table as (name, type, notnull, pk), in declared order. */
+db_err db_table_columns(db_conn *c, const char *table, db_result **out) DB_MUST_CHECK;
+/* Indexes of one table as (name, "unique"). Empty result if none. */
+db_err db_table_indexes(db_conn *c, const char *table, db_result **out) DB_MUST_CHECK;
+/* Row count of one table; *out set on success. */
+db_err db_table_row_count(db_conn *c, const char *table, long long *out) DB_MUST_CHECK;
+
 /* ---- result access / cleanup ---- */
 void        db_result_free(db_result *r);
 /* Cell as text; NULL if the cell is SQL NULL or indices are out of range. */

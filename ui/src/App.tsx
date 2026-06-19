@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { format as formatSql } from 'sql-formatter'
-import { api, DbCallError, type ResultSet } from './bridge'
+import { api, DbCallError, type ResultSet, type TableDetail } from './bridge'
 import { SqlEditor, type EditorSchema } from './SqlEditor'
 import { ConvertPanel } from './ConvertPanel'
 
@@ -46,7 +46,13 @@ export function App() {
   const [snapshot, setSnapshot] = useState(false)
   const [engine, setEngine] = useState<'duckdb' | 'sqlite' | null>(null)
   const [tables, setTables] = useState<string[]>([])
+  const [tableTypes, setTableTypes] = useState<Record<string, string>>({}) // name -> 'table' | 'view'
   const [columns, setColumns] = useState<EditorSchema>({})
+  // The table whose data is currently shown (set by clicking the sidebar), and whether the
+  // result pane shows that table's rows ('data') or its structure ('schema').
+  const [activeTable, setActiveTable] = useState<string | null>(null)
+  const [viewMode, setViewMode] = useState<'data' | 'schema'>('data')
+  const [detail, setDetail] = useState<TableDetail | null>(null)
   const [sql, setSql] = useState<string>(() => load('dbview-sql', 'SELECT 1 AS hello;'))
   const [lastSql, setLastSql] = useState('') // the SQL that produced the current result
   const [result, setResult] = useState<ResultSet | null>(null)
@@ -83,6 +89,7 @@ export function App() {
     try {
       const t = await api.tables()
       setTables(t.rows.map((row) => row[0] ?? ''))
+      setTableTypes(Object.fromEntries(t.rows.map((row) => [row[0] ?? '', row[1] ?? 'table'])))
       // table -> [columns], for editor autocompletion
       const cr = await api.columns()
       const map: EditorSchema = {}
@@ -94,6 +101,7 @@ export function App() {
       setColumns(map)
     } catch (e) {
       setTables([])
+      setTableTypes({})
       setColumns({})
       reportError(e)
     }
@@ -204,7 +212,7 @@ export function App() {
   }
 
   const runQuery = useCallback(
-    async (q?: string) => {
+    async (q?: string, fromTable?: string | null) => {
       let text = (q ?? sql).trim()
       if (!text) return
       // optional tidy-on-run
@@ -227,6 +235,10 @@ export function App() {
         setResult(r)
         setLastSql(text)
         setSort(null)
+        // A free-form run drops the active table; a sidebar preview keeps it (for the Schema toggle).
+        setActiveTable(fromTable ?? null)
+        setViewMode('data')
+        setDetail(null)
         pushHistory(text, true, r.row_count)
         // DDL changes the schema -> refresh the Tables sidebar + editor autocompletion.
         if (/\b(create|drop|alter|attach|detach|rename)\b/i.test(text)) void refreshSchema()
@@ -258,7 +270,23 @@ export function App() {
   function previewTable(name: string) {
     const q = `SELECT * FROM "${name}" LIMIT 100;`
     setSql(q)
-    void runQuery(q)
+    void runQuery(q, name)
+  }
+
+  // Toggle the result pane between the table's rows and its structure (columns + indexes).
+  async function toggleSchemaView() {
+    if (viewMode === 'schema') {
+      setViewMode('data')
+      return
+    }
+    if (!activeTable) return
+    try {
+      const d = await api.tableDetail(activeTable)
+      setDetail(d)
+      setViewMode('schema')
+    } catch (e) {
+      reportError(e)
+    }
   }
 
   const formatQuery = useCallback(() => {
@@ -429,6 +457,34 @@ export function App() {
     else void exportResultParquet()
   }
 
+  // Convert the whole open database to the other engine's file format, then switch to it.
+  async function convertDatabase() {
+    if (!path || !engine) return
+    const target: 'duckdb' | 'sqlite' = engine === 'sqlite' ? 'duckdb' : 'sqlite'
+    const base = path.split('/').pop() ?? 'database'
+    const stem = base.replace(/\.[^.]+$/, '')
+    try {
+      const picked = await api.pickSave(`${stem}.${target}`)
+      if (!picked.path) return
+      setBusy(true)
+      setError(null)
+      setNotice(null)
+      const r = await api.convert.database(path, engine, picked.path, target)
+      applyConn(await api.open(r.dst, target))
+      await refreshSchema()
+      setResult(null)
+      setActiveTable(null)
+      const warn = r.views_failed.length
+        ? ` (couldn’t recreate ${r.views_failed.length} view${r.views_failed.length === 1 ? '' : 's'}: ${r.views_failed.join(', ')})`
+        : ''
+      setNotice(`Converted to ${target} → ${r.dst}${warn}`)
+    } catch (e) {
+      reportError(e)
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
     <div className="app">
       <header className="topbar">
@@ -458,6 +514,15 @@ export function App() {
               </span>
             )}
           </span>
+          {engine && path && (
+            <button
+              onClick={() => void convertDatabase()}
+              disabled={busy}
+              title={`Copy every table and view into a new ${engine === 'sqlite' ? 'DuckDB' : 'SQLite'} file and switch to it`}
+            >
+              Convert to {engine === 'sqlite' ? 'DuckDB' : 'SQLite'}…
+            </button>
+          )}
           <select
             className="theme-select"
             value={theme}
@@ -482,13 +547,22 @@ export function App() {
           </div>
           {tables.length === 0 && <div className="muted">— none —</div>}
           <ul>
-            {tables.map((t) => (
-              <li key={t}>
-                <button className="link" onClick={() => previewTable(t)}>
-                  {t}
-                </button>
-              </li>
-            ))}
+            {tables.map((t) => {
+              const isView = tableTypes[t] === 'view'
+              return (
+                <li key={t}>
+                  <button
+                    className={`link tbl${activeTable === t ? ' active' : ''}`}
+                    onClick={() => previewTable(t)}
+                  >
+                    <span className={`tmark ${isView ? 'v' : 't'}`} title={isView ? 'view' : 'table'}>
+                      {isView ? 'V' : 'T'}
+                    </span>
+                    {t}
+                  </button>
+                </li>
+              )
+            })}
           </ul>
 
           {history.length > 0 && (
@@ -584,7 +658,16 @@ export function App() {
                 {result.truncated ? ' (truncated)' : ''}
               </span>
             )}
-            {result && result.row_count > 0 && (
+            {activeTable && (
+              <button
+                className={`schema-toggle${viewMode === 'schema' ? ' active' : ''}`}
+                onClick={() => void toggleSchemaView()}
+                title={viewMode === 'schema' ? 'Show table data' : `Show structure of "${activeTable}"`}
+              >
+                {viewMode === 'schema' ? 'Data' : 'Schema'}
+              </button>
+            )}
+            {result && result.row_count > 0 && viewMode === 'data' && (
               <span className="result-actions">
                 <button onClick={copyResult} title="Copy result as TSV (paste into a spreadsheet)">Copy</button>
               </span>
@@ -595,38 +678,104 @@ export function App() {
           {error && <div className="error">{error}</div>}
           {notice && <div className="notice">{notice}</div>}
 
-          {result && (
-            <div className="grid-wrap">
-              <table className="grid">
-                <thead>
-                  <tr>
-                    {result.columns.map((c, ci) => (
-                      <th key={c.name} onClick={() => toggleSort(ci)} className="sortable">
-                        {c.name}
-                        {c.type ? <span className="coltype"> {c.type}</span> : null}
-                        {sort && sort.col === ci ? (
-                          <span className="sort-ind">{sort.dir === 'asc' ? ' ▲' : ' ▼'}</span>
-                        ) : null}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {sortedRows.map((row, i) => (
-                    <tr key={i}>
-                      {row.map((cell, j) => (
-                        <td key={j} className={cell === null ? 'null' : ''}>
-                          {cell === null ? 'NULL' : cell}
-                        </td>
+          {viewMode === 'schema' && detail && activeTable ? (
+            <SchemaView table={activeTable} detail={detail} />
+          ) : (
+            result && (
+              <div className="grid-wrap">
+                <table className="grid">
+                  <thead>
+                    <tr>
+                      {result.columns.map((c, ci) => (
+                        <th key={c.name} onClick={() => toggleSort(ci)} className="sortable">
+                          {c.name}
+                          {c.type ? <span className="coltype"> {c.type}</span> : null}
+                          {sort && sort.col === ci ? (
+                            <span className="sort-ind">{sort.dir === 'asc' ? ' ▲' : ' ▼'}</span>
+                          ) : null}
+                        </th>
                       ))}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {sortedRows.map((row, i) => (
+                      <tr key={i}>
+                        {row.map((cell, j) => (
+                          <td key={j} className={cell === null ? 'null' : ''}>
+                            {cell === null ? 'NULL' : cell}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )
           )}
         </main>
       </div>
+    </div>
+  )
+}
+
+// True unless the cell is a clearly-falsy flag ("0"/"false"/empty/NULL). Engines disagree on
+// how they serialize booleans (SQLite "0"/"1", DuckDB "true"/"false"), so normalize here.
+function flag(v: string | null): boolean {
+  return v != null && v !== '0' && v !== '' && v.toLowerCase() !== 'false'
+}
+
+// Structure view for one table: columns (type/nullable/key) + indexes + row count.
+function SchemaView({ table, detail }: { table: string; detail: TableDetail }) {
+  const cols = detail.columns.rows
+  const idx = detail.indexes.rows
+  return (
+    <div className="grid-wrap schema-view">
+      <div className="schema-head">
+        <strong>{table}</strong> · {detail.row_count.toLocaleString()} row
+        {detail.row_count === 1 ? '' : 's'} · {cols.length} column{cols.length === 1 ? '' : 's'}
+      </div>
+      <table className="grid">
+        <thead>
+          <tr>
+            <th>Column</th>
+            <th>Type</th>
+            <th>Nullable</th>
+            <th>Key</th>
+          </tr>
+        </thead>
+        <tbody>
+          {cols.map((c, i) => (
+            <tr key={i}>
+              <td>{c[0]}</td>
+              <td className="coltype-cell">{c[1] || '—'}</td>
+              <td className={flag(c[2]) ? 'muted' : ''}>{flag(c[2]) ? 'NOT NULL' : 'nullable'}</td>
+              <td>{flag(c[3]) ? <span className="tmark pk">PK</span> : ''}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      <div className="schema-head">
+        Indexes {idx.length === 0 ? '— none —' : `(${idx.length})`}
+      </div>
+      {idx.length > 0 && (
+        <table className="grid">
+          <thead>
+            <tr>
+              <th>Index</th>
+              <th>Unique</th>
+            </tr>
+          </thead>
+          <tbody>
+            {idx.map((x, i) => (
+              <tr key={i}>
+                <td>{x[0]}</td>
+                <td className={flag(x[1]) ? '' : 'muted'}>{flag(x[1]) ? 'unique' : 'no'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </div>
   )
 }

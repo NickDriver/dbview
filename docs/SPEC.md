@@ -104,6 +104,9 @@ Layout mirrors money_books (`src/<module>/{module.h,module.c}`; unit tests inlin
   `last_error`. Two implementations: `engine_sqlite.c`, `engine_duckdb.c`.
 - `db_result` — column metadata (name, type) + row buffer + accessors; the unit returned to the
   API/UI as JSON `{columns:[…], rows:[[…]]}` with truncation/paging metadata.
+- **Schema introspection:** `db_list_tables` (name+type), `db_list_columns` (autocomplete), and
+  per-table `db_table_columns` / `db_table_indexes` / `db_table_row_count` (drive the Schema view).
+  All cross-engine; `pragma_table_info` is shared by SQLite and DuckDB, index listing is per-engine.
 
 ### 4.3 `query/` — SQL workbench
 - Run one or many statements on the active connection; return results + timing + affected rows.
@@ -121,7 +124,16 @@ Layout mirrors money_books (`src/<module>/{module.h,module.c}`; unit tests inlin
 - Source (CSV file / SQLite table / DuckDB table) → optional type adjustments → destination (new
   table or file).
 - **Wizard generates editable SQL** (`CREATE TABLE … AS SELECT …` / `COPY`), shown to the user and
-  runnable — teaches SQL while converting (goal #1 + #2).
+  runnable — teaches SQL while converting (goal #1 + #2). Builders are pure string functions
+  (`db_sql_*`), quoting all identifiers/paths; the API layer runs them.
+- **Whole-DB conversion (`convert.database`)** — convert an entire open database to a new file of
+  the *other* engine (SQLite⇄DuckDB), both directions. Performed on a throwaway in-memory DuckDB
+  that ATTACHes both sides, copies **each base table** (`CREATE TABLE … AS SELECT *`), then
+  recreates views (SQLite-source views from their original `sqlite_master` DDL; DuckDB-source from
+  `duckdb_views()`). It copies tables individually rather than `COPY FROM DATABASE` so it can **skip
+  SQLite-internal `sqlite_*` tables** (e.g. `sqlite_sequence` from `AUTOINCREMENT`) — copying those
+  pollutes a DuckDB target and breaks the round-trip back to SQLite (reserved name). Views it can't
+  recreate (dialect quirks) are reported in `views_failed`, not fatal.
 - **All-or-nothing invariant:** a failed conversion leaves no partial target (transactional / temp-
   then-rename).
 
@@ -142,8 +154,9 @@ Layout mirrors money_books (`src/<module>/{module.h,module.c}`; unit tests inlin
   throws a typed `DbError { code, message }`.
 - **v1 screens:**
   - **Launcher** — recent sources + "open file" + "import CSV".
-  - **Workbench** — Monaco SQL editor · result grid (sort/paginate/copy) · schema sidebar
-    (click-to-insert) · query history · export-from-grid.
+  - **Workbench** — CodeMirror SQL editor · result grid (sort/paginate/copy) · schema sidebar
+    (table/view `T`/`V` marks, click-to-preview) · per-table **Schema** view toggle (columns,
+    types, nullability, PK, indexes, row count) · query history · export-from-grid.
   - **Convert wizard** — source → types → destination, with the generated SQL preview.
 - **Visible-slice rule (Q11):** every phase ships a minimal but real UI for the feature it adds, so
   progress is observable, even though automated tests are engine-only in v1.
@@ -237,15 +250,17 @@ added later that reuses `db_api_dispatch` verbatim — no engine changes. No AI 
 |---|---|---|
 | **0 — skeleton** ✅ | CMake + C23 engine, `db_error`/`db_test`, webview, React/TS shell, `dbInvoke` bridge; open a SQLite file & list tables. | error/test harness; open+list tables. |
 | **1 — workbench** ✅ | SQLite + DuckDB engines; CodeMirror editor (table+column autocomplete) + sortable result grid + schema sidebar + query history. | query run; result JSON shape; error mapping; list tables/columns; read-only/snapshot fallback. |
-| **2 — convert** ✅ | CSV/Parquet import; Parquet/CSV export; SQLite⇄DuckDB attach/copy; conversions are generated DuckDB SQL. | round-trips CSV→table→Parquet and SQLite ATTACH→copy; SQL-builder quoting; export mkdir. |
+| **2 — convert** ✅ | CSV/Parquet import; Parquet/CSV export; SQLite⇄DuckDB attach/copy; **whole-DB convert** (SQLite⇄DuckDB, both directions); conversions are generated DuckDB SQL. | round-trips CSV→table→Parquet and SQLite ATTACH→copy; whole-DB convert both directions incl. views + `sqlite_*` skip; SQL-builder quoting; export mkdir. |
 | **3 — Databricks prep** ▶ | Parquet export done ✅; remaining: type controls, push to a Databricks Volume (REST). | Parquet round-trip (export→re-read). |
 | **4 — polish/packaging** | macOS `.app`; (later) MCP server, server connections, cell editing. | per-feature as added. |
 
 **Beyond the phase table (also shipped):** native Open/Save dialogs; **New DB** creates an on-disk
-SQLite/DuckDB file; unified **Import ▾ / Export ▾** buttons; native Edit menu (⌘C/V/X/A/Z) +
-clipboard; SQL formatting; light/dark/system theme; persistence of editor SQL, prefs, and
-last-opened DB. Engine test count: **38 green** under ASan+UBSan. Editor is **CodeMirror 6**, not
-Monaco (Monaco's worker/CDN model breaks single-file `file://` loading; CodeMirror bundles cleanly).
+SQLite/DuckDB file; unified **Import ▾ / Export ▾** buttons; **Convert to DuckDB/SQLite…**
+(whole-DB, both directions); per-table **Schema** view (columns/types/nullable/PK/indexes/rows) with
+sidebar `T`/`V` marks; native Edit menu (⌘C/V/X/A/Z) + clipboard; SQL formatting; light/dark/system
+theme; persistence of editor SQL, prefs, and last-opened DB. Engine test count: **44 green** under
+ASan+UBSan. Editor is **CodeMirror 6**, not Monaco (Monaco's worker/CDN model breaks single-file
+`file://` loading; CodeMirror bundles cleanly).
 
 ---
 

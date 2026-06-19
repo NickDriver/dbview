@@ -6,6 +6,7 @@
 #include "engine_internal.h"
 
 #include <errno.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -178,4 +179,107 @@ db_err db_list_columns(db_conn *c, db_result **out) {
         "ORDER BY table_name, ordinal_position;", out);
   }
   return DB_FAIL(DB_ERR_INTERNAL, "unknown engine kind");
+}
+
+/* Quote `s` with quote char `q`, doubling any embedded `q`. Returns a malloc'd string.
+ * Used to embed user-supplied table names into PRAGMA/SELECT text safely. */
+static char *eng_quote(const char *s, char q) {
+  if (!s) s = "";
+  size_t extra = 0;
+  for (const char *p = s; *p; p++)
+    if (*p == q) extra++;
+  size_t len = strlen(s);
+  char *out = malloc(len + extra + 3);  /* q + body(+doublings) + q + NUL */
+  if (!out) return NULL;
+  char *w = out;
+  *w++ = q;
+  for (const char *p = s; *p; p++) {
+    if (*p == q) *w++ = q;
+    *w++ = *p;
+  }
+  *w++ = q;
+  *w = '\0';
+  return out;
+}
+
+/* asprintf-style: format into a malloc'd buffer. Returns NULL on OOM. */
+static char *eng_aprintf(const char *fmt, ...) DB_PRINTF(1, 2);
+static char *eng_aprintf(const char *fmt, ...) {
+  va_list ap;
+  va_start(ap, fmt);
+  int n = vsnprintf(NULL, 0, fmt, ap);
+  va_end(ap);
+  if (n < 0) return NULL;
+  char *out = malloc((size_t)n + 1);
+  if (!out) return NULL;
+  va_start(ap, fmt);
+  vsnprintf(out, (size_t)n + 1, fmt, ap);
+  va_end(ap);
+  return out;
+}
+
+db_err db_table_columns(db_conn *c, const char *table, db_result **out) {
+  if (!c) return DB_FAIL(DB_ERR_INVALID_ARG, "connection not open");
+  if (!table || !table[0]) return DB_FAIL(DB_ERR_INVALID_ARG, "table is required");
+  char *lit = eng_quote(table, '\'');  /* pragma_table_info takes a string literal */
+  if (!lit) return DB_FAIL(DB_ERR_OOM, "quote table");
+  /* pragma_table_info exists in both SQLite (>= 3.16) and DuckDB with the same shape:
+   * (cid, name, type, notnull, dflt_value, pk). */
+  char *sql = eng_aprintf(
+    "SELECT name, type, \"notnull\", pk FROM pragma_table_info(%s);", lit);
+  free(lit);
+  if (!sql) return DB_FAIL(DB_ERR_OOM, "build sql");
+  db_err e = db_query(c, sql, out);
+  free(sql);
+  return e;
+}
+
+db_err db_table_indexes(db_conn *c, const char *table, db_result **out) {
+  if (!c) return DB_FAIL(DB_ERR_INVALID_ARG, "connection not open");
+  if (!table || !table[0]) return DB_FAIL(DB_ERR_INVALID_ARG, "table is required");
+  char *sql = NULL;
+  switch (c->kind) {
+    case DB_ENGINE_SQLITE: {
+      char *lit = eng_quote(table, '\'');
+      if (!lit) return DB_FAIL(DB_ERR_OOM, "quote table");
+      sql = eng_aprintf(
+        "SELECT name, \"unique\" AS \"unique\" FROM pragma_index_list(%s);", lit);
+      free(lit);
+      break;
+    }
+    case DB_ENGINE_DUCKDB: {
+      char *lit = eng_quote(table, '\'');
+      if (!lit) return DB_FAIL(DB_ERR_OOM, "quote table");
+      sql = eng_aprintf(
+        "SELECT index_name AS name, is_unique AS \"unique\" "
+        "FROM duckdb_indexes() WHERE table_name = %s;", lit);
+      free(lit);
+      break;
+    }
+    default:
+      return DB_FAIL(DB_ERR_INTERNAL, "unknown engine kind");
+  }
+  if (!sql) return DB_FAIL(DB_ERR_OOM, "build sql");
+  db_err e = db_query(c, sql, out);
+  free(sql);
+  return e;
+}
+
+db_err db_table_row_count(db_conn *c, const char *table, long long *out) {
+  if (!c) return DB_FAIL(DB_ERR_INVALID_ARG, "connection not open");
+  if (!table || !table[0]) return DB_FAIL(DB_ERR_INVALID_ARG, "table is required");
+  if (!out) return DB_FAIL(DB_ERR_INVALID_ARG, "out is NULL");
+  char *ident = eng_quote(table, '"');  /* quote as an identifier in FROM */
+  if (!ident) return DB_FAIL(DB_ERR_OOM, "quote table");
+  char *sql = eng_aprintf("SELECT count(*) FROM %s;", ident);
+  free(ident);
+  if (!sql) return DB_FAIL(DB_ERR_OOM, "build sql");
+  db_result *r = NULL;
+  db_err e = db_query(c, sql, &r);
+  free(sql);
+  if (e != DB_OK) return e;
+  const char *v = db_result_value(r, 0, 0);
+  *out = v ? strtoll(v, NULL, 10) : 0;
+  db_result_free(r);
+  return DB_OK;
 }
